@@ -6,6 +6,7 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
+import { applySnapshot, mergeWindow, prependOlder, type MessageWindow } from "@/lib/messageWindow";
 
 export const PAGE_SIZE = 50;
 
@@ -22,13 +23,14 @@ function toMessage(d: QueryDocumentSnapshot): ChatMessage {
   };
 }
 
+const EMPTY: MessageWindow<ChatMessage> = { older: [], latest: [] };
+
 export function useMessages() {
-  const [latest, setLatest] = useState<ChatMessage[]>([]);
-  const [older, setOlder] = useState<ChatMessage[]>([]);
-  const [hasOlder, setHasOlder] = useState(false);
+  const [win, setWin] = useState(EMPTY);
+  const [windowFull, setWindowFull] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
   const [offline, setOffline] = useState(false);
-  const cursor = useRef<QueryDocumentSnapshot | null>(null);
-  const loadedOlder = useRef(false);
+  const snapshots = useRef(new Map<string, QueryDocumentSnapshot>());
   const loading = useRef(false);
 
   useEffect(() => {
@@ -37,39 +39,39 @@ export function useMessages() {
       q,
       { includeMetadataChanges: true },
       (snap) => {
+        for (const d of snap.docs) snapshots.current.set(d.id, d);
         setOffline(snap.metadata.fromCache);
-        setLatest(snap.docs.map(toMessage).reverse());
-        if (!loadedOlder.current) {
-          cursor.current = snap.docs[snap.docs.length - 1] ?? null;
-          setHasOlder(snap.docs.length === PAGE_SIZE);
-        }
+        setWindowFull(snap.docs.length === PAGE_SIZE);
+        setWin((prev) => applySnapshot(prev, snap.docs.map(toMessage).reverse()));
       },
       () => setOffline(true),
     );
   }, []);
 
+  const messages = mergeWindow(win);
+  const oldestId = messages[0]?.id;
+
   const loadOlder = useCallback(async () => {
-    if (loading.current || !cursor.current) return;
+    const cursor = oldestId ? snapshots.current.get(oldestId) : undefined;
+    if (loading.current || !cursor) return;
     loading.current = true;
     try {
       const q = query(
         collection(getClientDb(), "messages"),
         orderBy("createdAt", "desc"),
-        startAfter(cursor.current),
+        startAfter(cursor),
         limit(PAGE_SIZE),
       );
       const snap = await getDocs(q);
-      loadedOlder.current = true;
-      cursor.current = snap.docs[snap.docs.length - 1] ?? cursor.current;
-      setHasOlder(snap.docs.length === PAGE_SIZE);
-      setOlder((prev) => [...snap.docs.map(toMessage).reverse(), ...prev]);
+      for (const d of snap.docs) snapshots.current.set(d.id, d);
+      if (snap.docs.length < PAGE_SIZE) setExhausted(true);
+      setWin((prev) => prependOlder(prev, snap.docs.map(toMessage).reverse()));
     } finally {
       loading.current = false;
     }
-  }, []);
+  }, [oldestId]);
 
-  const seen = new Set<string>();
-  const messages = [...older, ...latest].filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)));
+  const hasOlder = !exhausted && (windowFull || win.older.length > 0);
 
   return { messages, loadOlder, hasOlder, offline };
 }
