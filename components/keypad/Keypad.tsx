@@ -51,8 +51,20 @@ export function Keypad({ onSubmit }: { onSubmit: (pin: string) => Promise<EnterR
 
   return (
     <div className="flex w-[240px] flex-col items-stretch select-none">
-      <h1 className="mb-1.5 text-center font-condensed text-[34px] leading-none tracking-tight text-[rgba(195,195,195,0.95)]">
-        MASTER CODE
+      <h1 className="mb-1.5">
+        <svg viewBox="0 0 240 36" className="block w-full" role="img" aria-label="MASTER CODE">
+          <text
+            x="0"
+            y="32"
+            textLength="240"
+            lengthAdjust="spacing"
+            className="font-condensed"
+            fontSize="42"
+            fill="rgba(195,195,195,0.95)"
+          >
+            MASTER CODE
+          </text>
+        </svg>
       </h1>
       <div className="mb-[3px] flex h-[66px] items-center justify-center gap-7 bg-[rgba(30,30,30,0.5)] font-condensed text-[32px] text-[rgba(185,185,185,0.9)]">
         {code.split("").map((_, i) => (
