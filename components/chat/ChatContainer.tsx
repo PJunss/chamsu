@@ -1,25 +1,52 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
 import { useMessages } from "@/components/chat/useMessages";
 import { usePresence } from "@/components/chat/usePresence";
+import { useClaudeTyping } from "@/components/chat/useClaudeTyping";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
 import { ChatMobile } from "@/components/chat/mobile/ChatMobile";
 import type { ChatViewProps } from "@/components/chat/MessageList";
+import { parseClaudeQuestion } from "@/lib/claude/trigger";
+
+/** 서버가 방에 아무것도 쓰지 못한 경우(네트워크 오류·서버 오류). 429·502 는 서버가 안내를 쓰고, 409 는 다른 호출이 처리 중이다. */
+const CLAUDE_UNREPORTED = new Set([400, 404, 410, 500]);
+
+function callClaude(messageId: string): Promise<boolean> {
+  return fetch("/api/claude", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ messageId }),
+  }).then(
+    (res) => !CLAUDE_UNREPORTED.has(res.status),
+    (e: unknown) => {
+      console.warn("claude call failed", e instanceof Error ? e.name : "unknown");
+      return false;
+    },
+  );
+}
 
 export function ChatContainer({ uid, nickname }: { uid: string; nickname: string }) {
   const { messages, loadOlder, hasOlder, offline } = useMessages();
   const online = usePresence(uid, nickname);
+  const claudeTyping = useClaudeTyping();
+  const [claudeFailed, setClaudeFailed] = useState(false);
 
   const send = useCallback(
     async (text: string) => {
       try {
-        await addDoc(collection(getClientDb(), "messages"), {
+        const ref = await addDoc(collection(getClientDb(), "messages"), {
           text, nickname, uid, createdAt: serverTimestamp(),
         });
+        setClaudeFailed(false);
+        if (parseClaudeQuestion(text) !== null) {
+          void callClaude(ref.id).then((ok) => {
+            if (!ok) setClaudeFailed(true);
+          });
+        }
         return true;
       } catch {
         return false;
@@ -28,7 +55,9 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
     [uid, nickname],
   );
 
-  const props: ChatViewProps = { me: uid, messages, online, hasOlder, offline, loadOlder, send };
+  const props: ChatViewProps = {
+    me: uid, messages, online, hasOlder, offline, loadOlder, send, claudeTyping, claudeFailed,
+  };
 
   return (
     <main className="flex h-dvh flex-col bg-white">

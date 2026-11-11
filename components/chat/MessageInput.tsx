@@ -4,7 +4,15 @@ import { useState } from "react";
 
 export const MAX_TEXT = 500;
 
-export function MessageInput({ send, offline }: { send: (text: string) => Promise<boolean>; offline: boolean }) {
+export function MessageInput({
+  send,
+  offline,
+  claudeFailed,
+}: {
+  send: (text: string) => Promise<boolean>;
+  offline: boolean;
+  claudeFailed: boolean;
+}) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -24,7 +32,10 @@ export function MessageInput({ send, offline }: { send: (text: string) => Promis
       {offline ? (
         <p className="mb-1 text-xs text-amber-700">연결 끊김</p>
       ) : (
-        failed && <p className="mb-1 text-xs text-red-500">전송 실패</p>
+        <>
+          {failed && <p className="mb-1 text-xs text-red-500">전송 실패</p>}
+          {claudeFailed && <p className="mb-1 text-xs text-red-500">클로드 호출 실패</p>}
+        </>
       )}
       <div className="flex gap-2">
         <textarea

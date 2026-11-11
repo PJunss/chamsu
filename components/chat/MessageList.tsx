@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/components/chat/useMessages";
 import type { OnlineUser } from "@/lib/presence";
 import { isNearBottom } from "@/lib/scroll";
+import { BOT_NICKNAME, BOT_UID } from "@/lib/claude/constants";
 
 export type ChatViewProps = {
   me: string;
@@ -13,11 +14,19 @@ export type ChatViewProps = {
   offline: boolean;
   loadOlder: () => Promise<void>;
   send: (text: string) => Promise<boolean>;
+  claudeTyping: boolean;
+  claudeFailed: boolean;
 };
 
 const timeFmt = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
-export function MessageList({ me, messages, hasOlder, loadOlder }: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder">) {
+export function MessageList({
+  me,
+  messages,
+  hasOlder,
+  loadOlder,
+  claudeTyping,
+}: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder" | "claudeTyping">) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const prevHeight = useRef<number | null>(null);
@@ -35,6 +44,11 @@ export function MessageList({ me, messages, hasOlder, loadOlder }: Pick<ChatView
     }
     lastId.current = newestId;
   }, [messages]);
+
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el && claudeTyping && stick.current) el.scrollTop = el.scrollHeight;
+  }, [claudeTyping]);
 
   useEffect(() => {
     const el = box.current;
@@ -60,9 +74,15 @@ export function MessageList({ me, messages, hasOlder, loadOlder }: Pick<ChatView
       <ul className="flex flex-col gap-2">
         {messages.map((m) => {
           const mine = m.uid === me;
+          const bot = m.uid === BOT_UID;
           return (
             <li key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-              {!mine && <span className="mb-0.5 text-xs text-zinc-500">{m.nickname}</span>}
+              {!mine && (
+                <span className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
+                  {m.nickname}
+                  {bot && <span className="rounded border border-zinc-300 px-1 text-[10px] leading-4 text-zinc-400">봇</span>}
+                </span>
+              )}
               <div className="flex items-end gap-1.5">
                 {mine && <time className="text-[11px] text-zinc-400">{m.createdAt ? timeFmt.format(m.createdAt) : ""}</time>}
                 <p
@@ -77,6 +97,11 @@ export function MessageList({ me, messages, hasOlder, loadOlder }: Pick<ChatView
             </li>
           );
         })}
+        {claudeTyping && (
+          <li className="flex items-start">
+            <span className="animate-pulse text-xs text-zinc-400">{BOT_NICKNAME}가 입력 중…</span>
+          </li>
+        )}
       </ul>
     </div>
   );
