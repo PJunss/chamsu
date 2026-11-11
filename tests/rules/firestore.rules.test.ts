@@ -91,6 +91,12 @@ describe("presence", () => {
     await assertSucceeds(deleteDoc(doc(db, "presence/alice")));
   });
   test("남의 문서는 거부", async () => assertFails(setDoc(doc(member(), "presence/bob"), p())));
+  test("남의 문서 삭제는 거부", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "presence/bob"), { nickname: "영희", lastSeen: Timestamp.now() });
+    });
+    await assertFails(deleteDoc(doc(member(), "presence/bob")));
+  });
   test("닉네임 위조는 거부", async () =>
     assertFails(setDoc(doc(member(), "presence/alice"), p({ nickname: "영희" }))));
   test("서버 시각이 아니면 거부", async () =>
