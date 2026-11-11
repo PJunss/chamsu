@@ -7,6 +7,7 @@ const ts = (ms: number): Ts => ({ toMillis: () => ms });
 
 let collections: Map<string, Map<string, Data>>;
 let autoId = 0;
+let failJobUpdate = false;
 
 function col(name: string) {
   let c = collections.get(name);
@@ -28,6 +29,7 @@ function docRef(name: string, id: string) {
       col(name).set(id, { ...data });
     },
     update: async (patch: Data) => {
+      if (name === "claudeJobs" && failJobUpdate) throw new Error("job update failed");
       const cur = col(name).get(id);
       if (!cur) throw new Error("not found");
       col(name).set(id, { ...cur, ...patch });
@@ -120,6 +122,7 @@ beforeEach(() => {
   autoId = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  failJobUpdate = false;
   askClaude.mockReset().mockResolvedValue("반가워");
   consumeClaudeQuota.mockReset().mockResolvedValue("ok");
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -213,6 +216,19 @@ describe("POST /api/claude", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "claude_failed" });
     expect(botReplies()).toEqual([expect.objectContaining({ text: REPLY_TEXT.failed, replyTo: "q" })]);
+    expect(job("q")?.status).toBe("failed");
+  });
+  test("답을 쓴 뒤 job 갱신이 실패해도 200 이고 실패 문구를 더 쓰지 않는다", async () => {
+    failJobUpdate = true;
+    const res = await POST(req({ messageId: "q" }));
+    expect(res.status).toBe(200);
+    expect(botReplies()).toEqual([expect.objectContaining({ text: "반가워", replyTo: "q" })]);
+  });
+  test("사용량 확인이 실패하면 500 이고 job 은 failed", async () => {
+    consumeClaudeQuota.mockRejectedValue(new Error("db"));
+    const res = await POST(req({ messageId: "q" }));
+    expect(res.status).toBe(500);
+    expect(askClaude).not.toHaveBeenCalled();
     expect(job("q")?.status).toBe("failed");
   });
 });

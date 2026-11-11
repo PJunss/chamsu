@@ -53,34 +53,46 @@ export async function POST(req: Request) {
         createdAt: FieldValue.serverTimestamp(),
         replyTo: id,
       });
-
-    const quota = await consumeClaudeQuota(q.uid, now);
-    if (quota !== "ok") {
-      await reply(quota === "user" ? REPLY_TEXT.userLimited : REPLY_TEXT.dailyLimited);
-      await jobRef.update({ status: "done" });
-      return fail(quota === "user" ? "user_limited" : "daily_limited", 429);
-    }
-
-    const historySnap = await db
-      .collection("messages")
-      .orderBy("createdAt")
-      .endAt(q.createdAt)
-      .limitToLast(CONTEXT_SIZE)
-      .get();
-    const history: CtxMessage[] = historySnap.docs.map((d) => {
-      const x = d.data();
-      return { id: d.id, uid: x.uid, nickname: x.nickname, text: x.text };
-    });
+    /** 작업 상태 갱신 실패는 답의 성공·실패를 바꾸지 않는다. 표시는 2분 뒤 사라진다. */
+    const markJob = (status: "done" | "failed") =>
+      jobRef.update({ status }).catch((e: unknown) => {
+        console.error("claude job update failed", e instanceof Error ? e.name : "unknown");
+      });
 
     try {
-      await reply(await askClaude(buildClaudeMessages(history)));
-      await jobRef.update({ status: "done" });
+      const quota = await consumeClaudeQuota(q.uid, now);
+      if (quota !== "ok") {
+        await reply(quota === "user" ? REPLY_TEXT.userLimited : REPLY_TEXT.dailyLimited);
+        await markJob("done");
+        return fail(quota === "user" ? "user_limited" : "daily_limited", 429);
+      }
+
+      const historySnap = await db
+        .collection("messages")
+        .orderBy("createdAt")
+        .endAt(q.createdAt)
+        .limitToLast(CONTEXT_SIZE)
+        .get();
+      const history: CtxMessage[] = historySnap.docs.map((d) => {
+        const x = d.data();
+        return { id: d.id, uid: x.uid, nickname: x.nickname, text: x.text };
+      });
+
+      let answer: string;
+      try {
+        answer = await askClaude(buildClaudeMessages(history));
+      } catch (e) {
+        console.error("claude failed", ...describeError(e));
+        await reply(REPLY_TEXT.failed);
+        await markJob("failed");
+        return fail("claude_failed", 502);
+      }
+      await reply(answer);
+      await markJob("done");
       return Response.json({ ok: true });
     } catch (e) {
-      console.error("claude failed", ...describeError(e));
-      await reply(REPLY_TEXT.failed);
-      await jobRef.update({ status: "failed" });
-      return fail("claude_failed", 502);
+      await markJob("failed");
+      throw e;
     }
   } catch (e) {
     console.error("claude route failed", e instanceof Error ? e.name : "unknown");
