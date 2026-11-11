@@ -1,0 +1,9 @@
+export const BOT_UID = "claude";
+export const BOT_NICKNAME = "클로드";
+export const CLAUDE_MODEL = "claude-sonnet-5-5";
+export const CONTEXT_SIZE = 30;
+export const QUESTION_TTL_MS = 120_000;
+export const USER_WINDOW_MS = 60_000;
+export const USER_MAX = 5;
+export const DAILY_MAX = 200;
+export const MAX_REPLY_CHARS = 500;

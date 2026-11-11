@@ -23,3 +23,10 @@ describe("nextRateState", () => {
     expect(MAX_ATTEMPTS).toBe(10);
   });
 });
+
+test("창·한도를 인자로 받는다", () => {
+  const prev = { count: 5, windowStart: 0 };
+  expect(nextRateState(prev, 1000, 60_000, 5).allowed).toBe(false);
+  expect(nextRateState(prev, 1000, 60_000, 6).allowed).toBe(true);
+  expect(nextRateState(prev, 60_000, 60_000, 5)).toEqual({ allowed: true, state: { count: 1, windowStart: 60_000 } });
+});
