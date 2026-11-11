@@ -9,6 +9,7 @@ vi.mock("@/lib/customToken", () => ({
 }));
 
 import { POST } from "@/app/api/enter/route";
+import { uidForNickname } from "@/lib/uid";
 
 function req(body: unknown, ip = "1.2.3.4") {
   return new Request("http://localhost/api/enter", {
@@ -64,7 +65,7 @@ describe("POST /api/enter", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ token: "tok" });
     const [uid, claims] = createCustomToken.mock.calls[0];
-    expect(uid).toMatch(/^[0-9a-f-]{36}$/);
+    expect(uid).toBe(uidForNickname("철수"));
     expect(claims).toEqual({ member: true, nickname: "철수" });
   });
   test("CHAT_PIN 이 없으면 401", async () => {

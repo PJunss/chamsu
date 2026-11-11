@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { uidForNickname } from "@/lib/uid";
 import { consumeAttempt } from "@/lib/attempts";
 import { getClientIp } from "@/lib/clientIp";
 import { createCustomToken } from "@/lib/customToken";
@@ -23,10 +23,8 @@ export async function POST(req: Request) {
     if (!pinMatches(pin, process.env.CHAT_PIN)) return fail("wrong_pin", 401);
     if (nickname === undefined) return Response.json({ ok: true });
     if (!isAllowedNickname(nickname, process.env.CHAT_NICKNAMES)) return fail("unknown_nickname", 403);
-    const token = await createCustomToken(randomUUID(), {
-      member: true,
-      nickname: nickname.trim(),
-    });
+    const name = nickname.trim();
+    const token = await createCustomToken(uidForNickname(name), { member: true, nickname: name });
     return Response.json({ token });
   } catch (e) {
     console.error("enter failed", e);
