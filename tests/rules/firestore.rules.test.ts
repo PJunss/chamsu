@@ -6,7 +6,20 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, Timestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  Timestamp,
+} from "firebase/firestore";
 
 let env: RulesTestEnvironment;
 
@@ -112,4 +125,27 @@ describe("rateLimits", () => {
     await assertFails(getDoc(doc(member(), "rateLimits/1.2.3.4")));
     await assertFails(setDoc(doc(member(), "rateLimits/1.2.3.4"), { count: 0, windowStart: 0 }));
   });
+});
+
+describe("claudeJobs", () => {
+  test("member 는 읽고 outsider 는 못 읽는다", async () => {
+    await assertSucceeds(getDocs(collection(member(), "claudeJobs")));
+    await assertFails(getDocs(collection(outsider(), "claudeJobs")));
+  });
+  test("member 는 pending 작업을 구독할 수 있다", async () =>
+    assertSucceeds(getDocs(query(collection(member(), "claudeJobs"), where("status", "==", "pending")))));
+  test("member 도 쓰지 못한다", async () =>
+    assertFails(setDoc(doc(member(), "claudeJobs/x"), { status: "pending" })));
+});
+
+describe("claudeLimits", () => {
+  test("접근 불가", async () => {
+    await assertFails(getDoc(doc(member(), "claudeLimits/day_20261111")));
+    await assertFails(setDoc(doc(member(), "claudeLimits/day_20261111"), { count: 0 }));
+  });
+});
+
+test("messages: 클로드 이름·uid 로는 못 쓴다", async () => {
+  await assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "클로드" })));
+  await assertFails(addDoc(collection(member(), "messages"), msg({ uid: "claude" })));
 });
