@@ -34,8 +34,14 @@ export function ChamsuApp() {
   if (stage.name === "chat") return <ChatContainer uid={stage.uid} nickname={stage.nickname} />;
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-white">
-      {stage.name === "pin" ? <Keypad onSubmit={submitPin} /> : <NicknameForm onSubmit={submitNickname} />}
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 scale-110 bg-[url('/home.jpeg')] bg-cover bg-center blur-md"
+      />
+      <div className="relative">
+        {stage.name === "pin" ? <Keypad onSubmit={submitPin} /> : <NicknameForm onSubmit={submitNickname} />}
+      </div>
     </main>
   );
 }

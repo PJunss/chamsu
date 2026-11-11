@@ -47,7 +47,7 @@ export function Keypad({ onSubmit }: { onSubmit: (pin: string) => Promise<EnterR
   }, [press]);
 
   const keyClass =
-    "flex aspect-square items-center justify-center bg-[rgba(150,150,150,0.4)] font-condensed text-[38px] leading-none text-[rgba(55,55,55,0.8)] transition-colors hover:bg-[rgba(165,165,165,0.5)] active:bg-[rgba(120,120,120,0.5)] disabled:cursor-default";
+    "flex h-[78px] items-center justify-center bg-[rgba(150,150,150,0.4)] font-condensed text-[38px] leading-none text-[rgba(55,55,55,0.8)] transition-colors hover:bg-[rgba(165,165,165,0.5)] active:bg-[rgba(120,120,120,0.5)] disabled:cursor-default";
 
   return (
     <div className="flex w-[240px] flex-col items-stretch select-none">
@@ -65,7 +65,7 @@ export function Keypad({ onSubmit }: { onSubmit: (pin: string) => Promise<EnterR
             {k}
           </button>
         ))}
-        <button type="button" className={`${keyClass} col-span-2 aspect-auto`} disabled={busy} onClick={() => press("0")}>
+        <button type="button" className={`${keyClass} col-span-2`} disabled={busy} onClick={() => press("0")}>
           0
         </button>
         <button type="button" className={keyClass} disabled={busy} onClick={() => press("C")}>
