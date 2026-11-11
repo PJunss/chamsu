@@ -76,7 +76,9 @@ export function MessageList({
           const mine = m.uid === me;
           const bot = m.uid === BOT_UID;
           return (
-            <li key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+            <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} gap-2`}>
+              {bot && <BotAvatar />}
+              <div className={`flex min-w-0 flex-col ${mine ? "items-end" : "items-start"}`}>
               {!mine && (
                 <span className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
                   {m.nickname}
@@ -94,15 +96,30 @@ export function MessageList({
                 </p>
                 {!mine && <time className="text-[11px] text-zinc-400">{m.createdAt ? timeFmt.format(m.createdAt) : ""}</time>}
               </div>
+              </div>
             </li>
           );
         })}
         {claudeTyping && (
-          <li className="flex items-start">
+          <li className="flex items-center gap-2">
+            <BotAvatar />
             <span className="animate-pulse text-xs text-zinc-400">{BOT_NICKNAME}가 입력 중…</span>
           </li>
         )}
       </ul>
     </div>
+  );
+}
+
+function BotAvatar() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/bianca.jpeg"
+      alt={BOT_NICKNAME}
+      width={36}
+      height={36}
+      className="h-9 w-9 shrink-0 rounded-full object-cover"
+    />
   );
 }
