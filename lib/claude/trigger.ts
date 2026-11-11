@@ -1,4 +1,4 @@
-const PREFIX = "@클로드";
+const PREFIX = "@비앙카";
 
 export function parseClaudeQuestion(text: string): string | null {
   const t = text.trim();

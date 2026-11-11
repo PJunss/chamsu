@@ -123,7 +123,7 @@ beforeEach(() => {
   askClaude.mockReset().mockResolvedValue("반가워");
   consumeClaudeQuota.mockReset().mockResolvedValue("ok");
   vi.spyOn(console, "error").mockImplementation(() => {});
-  putMessage("q", "u1", "철수", "@클로드 안녕", NOW - 1000);
+  putMessage("q", "u1", "철수", "@비앙카 안녕", NOW - 1000);
 });
 
 describe("POST /api/claude", () => {
@@ -133,18 +133,18 @@ describe("POST /api/claude", () => {
     expect((await POST(req(null))).status).toBe(400);
   });
   test("메시지가 없으면 404", async () => expect((await POST(req({ messageId: "none" }))).status).toBe(404));
-  test("@클로드 질문이 아니면 400 이고 Claude 를 부르지 않는다", async () => {
+  test("@비앙카 질문이 아니면 400 이고 Claude 를 부르지 않는다", async () => {
     putMessage("p", "u1", "철수", "그냥 말", NOW - 1000);
     expect((await POST(req({ messageId: "p" }))).status).toBe(400);
     expect(askClaude).not.toHaveBeenCalled();
   });
-  test("질문자가 클로드면 400", async () => {
-    putMessage("b", "claude", "클로드", "@클로드 안녕", NOW - 1000);
+  test("질문자가 비앙카면 400", async () => {
+    putMessage("b", "claude", "비앙카", "@비앙카 안녕", NOW - 1000);
     expect((await POST(req({ messageId: "b" }))).status).toBe(400);
     expect(askClaude).not.toHaveBeenCalled();
   });
   test("2분이 지난 질문은 410", async () => {
-    putMessage("old", "u1", "철수", "@클로드 안녕", NOW - 180_000);
+    putMessage("old", "u1", "철수", "@비앙카 안녕", NOW - 180_000);
     expect((await POST(req({ messageId: "old" }))).status).toBe(410);
     expect(askClaude).not.toHaveBeenCalled();
   });
@@ -162,7 +162,7 @@ describe("POST /api/claude", () => {
     expect(consumeClaudeQuota).toHaveBeenCalledWith("u1", NOW);
     expect(askClaude).not.toHaveBeenCalled();
     expect(botReplies()).toEqual([
-      expect.objectContaining({ text: REPLY_TEXT.userLimited, nickname: "클로드", uid: "claude", replyTo: "q" }),
+      expect.objectContaining({ text: REPLY_TEXT.userLimited, nickname: "비앙카", uid: "claude", replyTo: "q" }),
     ]);
     expect(job("q")?.status).toBe("done");
   });
@@ -175,9 +175,9 @@ describe("POST /api/claude", () => {
     expect(botReplies()).toEqual([expect.objectContaining({ text: REPLY_TEXT.dailyLimited, replyTo: "q" })]);
     expect(job("q")?.status).toBe("done");
   });
-  test("정상이면 200, 맥락으로 Claude 를 부르고 답을 클로드 이름으로 쓴다", async () => {
+  test("정상이면 200, 맥락으로 Claude 를 부르고 답을 비앙카 이름으로 쓴다", async () => {
     putMessage("a", "u2", "영희", "점심 뭐 먹지", NOW - 5000);
-    putMessage("c", "claude", "클로드", "김밥", NOW - 4000);
+    putMessage("c", "claude", "비앙카", "김밥", NOW - 4000);
     const res = await POST(req({ messageId: "q" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
@@ -185,10 +185,10 @@ describe("POST /api/claude", () => {
     expect(sent).toEqual([
       { role: "user", content: "영희: 점심 뭐 먹지" },
       { role: "assistant", content: "김밥" },
-      { role: "user", content: "철수: @클로드 안녕" },
+      { role: "user", content: "철수: @비앙카 안녕" },
     ]);
     expect(botReplies()).toEqual([
-      expect.objectContaining({ text: "반가워", nickname: "클로드", uid: "claude", replyTo: "q" }),
+      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "q" }),
     ]);
     expect(job("q")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1" }));
   });
@@ -196,7 +196,7 @@ describe("POST /api/claude", () => {
     putMessage("later", "u2", "영희", "나중 말", NOW - 500);
     await POST(req({ messageId: "q" }));
     const sent = askClaude.mock.calls[0][0];
-    expect(sent.at(-1)).toEqual({ role: "user", content: "철수: @클로드 안녕" });
+    expect(sent.at(-1)).toEqual({ role: "user", content: "철수: @비앙카 안녕" });
     expect(JSON.stringify(sent)).not.toContain("나중 말");
   });
   test("맥락은 최근 30개까지", async () => {

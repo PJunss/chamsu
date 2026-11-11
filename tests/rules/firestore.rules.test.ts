@@ -145,7 +145,7 @@ describe("claudeLimits", () => {
   });
 });
 
-test("messages: 클로드 이름·uid 로는 못 쓴다", async () => {
-  await assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "클로드" })));
+test("messages: 비앙카 이름·uid 로는 못 쓴다", async () => {
+  await assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "비앙카" })));
   await assertFails(addDoc(collection(member(), "messages"), msg({ uid: "claude" })));
 });

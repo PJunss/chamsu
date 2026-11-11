@@ -34,7 +34,7 @@ export function MessageInput({
       ) : (
         <>
           {failed && <p className="mb-1 text-xs text-red-500">전송 실패</p>}
-          {claudeFailed && <p className="mb-1 text-xs text-red-500">클로드 호출 실패</p>}
+          {claudeFailed && <p className="mb-1 text-xs text-red-500">비앙카 호출 실패</p>}
         </>
       )}
       <div className="flex gap-2">
