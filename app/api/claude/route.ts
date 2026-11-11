@@ -1,0 +1,89 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { FieldValue, type Timestamp } from "firebase-admin/firestore";
+import { getAdminDb } from "@/lib/firebaseAdmin";
+import { askClaude } from "@/lib/claude/client";
+import { BOT_NICKNAME, BOT_UID, CONTEXT_SIZE, QUESTION_TTL_MS } from "@/lib/claude/constants";
+import { buildClaudeMessages, type CtxMessage } from "@/lib/claude/context";
+import { consumeClaudeQuota } from "@/lib/claude/limits";
+import { REPLY_TEXT } from "@/lib/claude/reply";
+import { parseClaudeQuestion } from "@/lib/claude/trigger";
+
+const fail = (error: string, status: number) => Response.json({ error }, { status });
+
+/** 서버 로그에 남길 오류 종류와 상태 코드. 키·본문은 남기지 않는다. */
+function describeError(e: unknown): [string, number | ""] {
+  if (e instanceof Anthropic.RateLimitError) return ["rate_limit", e.status ?? ""];
+  if (e instanceof Anthropic.APIError) return ["api_error", e.status ?? ""];
+  return [e instanceof Error ? e.name : "unknown", ""];
+}
+
+export async function POST(req: Request) {
+  let messageId: unknown;
+  try {
+    ({ messageId } = await req.json());
+  } catch {
+    return fail("bad_request", 400);
+  }
+  if (typeof messageId !== "string" || !messageId) return fail("bad_request", 400);
+  const id = messageId;
+
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("messages").doc(id).get();
+    if (!snap.exists) return fail("not_found", 404);
+    const q = snap.data() as { text: string; uid: string; nickname: string; createdAt: Timestamp };
+    if (typeof q.text !== "string" || parseClaudeQuestion(q.text) === null) return fail("bad_request", 400);
+    if (q.uid === BOT_UID) return fail("bad_request", 400);
+    const now = Date.now();
+    if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);
+
+    const jobRef = db.collection("claudeJobs").doc(id);
+    const created = await db.runTransaction(async (tx) => {
+      if ((await tx.get(jobRef)).exists) return false;
+      tx.set(jobRef, { status: "pending", createdAt: FieldValue.serverTimestamp(), askedBy: q.uid });
+      return true;
+    });
+    if (!created) return fail("duplicate", 409);
+
+    const reply = (text: string) =>
+      db.collection("messages").add({
+        text,
+        nickname: BOT_NICKNAME,
+        uid: BOT_UID,
+        createdAt: FieldValue.serverTimestamp(),
+        replyTo: id,
+      });
+
+    const quota = await consumeClaudeQuota(q.uid, now);
+    if (quota !== "ok") {
+      await reply(quota === "user" ? REPLY_TEXT.userLimited : REPLY_TEXT.dailyLimited);
+      await jobRef.update({ status: "done" });
+      return fail(quota === "user" ? "user_limited" : "daily_limited", 429);
+    }
+
+    const historySnap = await db
+      .collection("messages")
+      .orderBy("createdAt")
+      .endAt(q.createdAt)
+      .limitToLast(CONTEXT_SIZE)
+      .get();
+    const history: CtxMessage[] = historySnap.docs.map((d) => {
+      const x = d.data();
+      return { id: d.id, uid: x.uid, nickname: x.nickname, text: x.text };
+    });
+
+    try {
+      await reply(await askClaude(buildClaudeMessages(history)));
+      await jobRef.update({ status: "done" });
+      return Response.json({ ok: true });
+    } catch (e) {
+      console.error("claude failed", ...describeError(e));
+      await reply(REPLY_TEXT.failed);
+      await jobRef.update({ status: "failed" });
+      return fail("claude_failed", 502);
+    }
+  } catch (e) {
+    console.error("claude route failed", e instanceof Error ? e.name : "unknown");
+    return fail("server_error", 500);
+  }
+}
