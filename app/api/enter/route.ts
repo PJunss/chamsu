@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { consumeAttempt } from "@/lib/attempts";
 import { getClientIp } from "@/lib/clientIp";
-import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { createCustomToken } from "@/lib/customToken";
 import { isAllowedNickname } from "@/lib/nicknames";
 import { isValidPinFormat, pinMatches } from "@/lib/pin";
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     if (!pinMatches(pin, process.env.CHAT_PIN)) return fail("wrong_pin", 401);
     if (nickname === undefined) return Response.json({ ok: true });
     if (!isAllowedNickname(nickname, process.env.CHAT_NICKNAMES)) return fail("unknown_nickname", 403);
-    const token = await getAdminAuth().createCustomToken(randomUUID(), {
+    const token = await createCustomToken(randomUUID(), {
       member: true,
       nickname: nickname.trim(),
     });

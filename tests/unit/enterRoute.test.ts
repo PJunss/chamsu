@@ -4,8 +4,8 @@ const consumeAttempt = vi.fn<(ip: string) => Promise<boolean>>();
 const createCustomToken = vi.fn<(uid: string, claims: object) => Promise<string>>();
 
 vi.mock("@/lib/attempts", () => ({ consumeAttempt: (ip: string) => consumeAttempt(ip) }));
-vi.mock("@/lib/firebaseAdmin", () => ({
-  getAdminAuth: () => ({ createCustomToken: (uid: string, c: object) => createCustomToken(uid, c) }),
+vi.mock("@/lib/customToken", () => ({
+  createCustomToken: (uid: string, c: object) => createCustomToken(uid, c),
 }));
 
 import { POST } from "@/app/api/enter/route";
