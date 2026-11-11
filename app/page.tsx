@@ -1,3 +1,5 @@
+import { ChamsuApp } from "@/components/ChamsuApp";
+
 export default function Page() {
-  return <main />;
+  return <ChamsuApp />;
 }
