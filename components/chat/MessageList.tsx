@@ -10,6 +10,7 @@ export type ChatViewProps = {
   messages: ChatMessage[];
   online: OnlineUser[];
   hasOlder: boolean;
+  offline: boolean;
   loadOlder: () => Promise<void>;
   send: (text: string) => Promise<boolean>;
 };
@@ -46,7 +47,11 @@ export function MessageList({ me, messages, hasOlder, loadOlder }: Pick<ChatView
     stick.current = isNearBottom(el);
     if (el.scrollTop === 0 && hasOlder) {
       prevHeight.current = el.scrollHeight;
-      await loadOlder();
+      try {
+        await loadOlder();
+      } catch {
+        prevHeight.current = null;
+      }
     }
   }
 

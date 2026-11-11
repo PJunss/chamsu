@@ -28,7 +28,7 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
     [uid, nickname],
   );
 
-  const props: ChatViewProps = { me: uid, messages, online, hasOlder, loadOlder, send };
+  const props: ChatViewProps = { me: uid, messages, online, hasOlder, offline, loadOlder, send };
 
   return (
     <main className="flex h-dvh flex-col bg-white">

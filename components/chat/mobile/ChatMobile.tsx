@@ -20,7 +20,7 @@ export function ChatMobile(p: ChatViewProps) {
         )}
       </header>
       <MessageList me={p.me} messages={p.messages} hasOlder={p.hasOlder} loadOlder={p.loadOlder} />
-      <MessageInput send={p.send} />
+      <MessageInput send={p.send} offline={p.offline} />
     </div>
   );
 }
