@@ -28,7 +28,7 @@ export function effectiveAffinity(score: number, updatedAtMs: number, nowMs: num
 /**
  * Jev 의 호의·적대 점수(0~1)와 복귀를 반영한 현재 값으로 정한 변화량(소수, 반올림하지 않음).
  * AFFINITY_GAIN × 호의 × (100 − 현재) / 100 − AFFINITY_LOSS × 적대. 높을수록 덜 오르고, 내리기는 쉽다.
- * 호의·적대 점수는 0~1 로 자르고, 호의는 AFFINITY_NOISE 미만, 적대는 AFFINITY_NEG_MIN 미만이면 0 으로 본다(확실한 비난·욕설만 깎는다). 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
+ * 호의·적대 점수는 0~1 로 자르고, 호의는 AFFINITY_NOISE 미만, 적대는 AFFINITY_NEG_MIN 미만이면 0 으로 본다(봇을 향한 욕·비하·위협·능력 비난만 깎는다). 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
  */
 export function affinityDelta(
   current: number,
