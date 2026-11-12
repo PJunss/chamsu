@@ -13,6 +13,7 @@ test("상수", () => {
   expect(constants.AFFINITY_DECAY_PER_DAY).toBe(0.5);
   expect(constants.AFFINITY_GAIN).toBe(1.0);
   expect(constants.AFFINITY_LOSS).toBe(1.5);
+  expect(constants.AFFINITY_GAIN_COOLDOWN_MS).toBe(600_000);
   expect("AFFINITY_MAX_DELTA" in constants).toBe(false);
 });
 
@@ -27,11 +28,11 @@ test("시간 복귀: 하루 0.5씩 50 쪽으로, 50 을 넘지 않는다", () =>
 });
 
 test("변화량: 오르기는 현재 값에 비례해 어렵고, 내리기는 1.5배. 반올림하지 않는다", () => {
-  expect(affinityDelta(50, 0.98, 0)).toBeCloseTo(0.49, 10);
-  expect(affinityDelta(80, 0.98, 0)).toBeCloseTo(0.196, 10);
-  expect(affinityDelta(50, 0, 0.97)).toBeCloseTo(-1.455, 10);
-  expect(affinityDelta(100, 1, 0)).toBe(0);
-  expect(affinityDelta(50, 0.97, 0.02)).toBeCloseTo(0.455, 10);
+  expect(affinityDelta(50, 0.98, 0, null, T0)).toBeCloseTo(0.49, 10);
+  expect(affinityDelta(80, 0.98, 0, null, T0)).toBeCloseTo(0.196, 10);
+  expect(affinityDelta(50, 0, 0.97, null, T0)).toBeCloseTo(-1.455, 10);
+  expect(affinityDelta(100, 1, 0, null, T0)).toBe(0);
+  expect(affinityDelta(50, 0.97, 0.02, null, T0)).toBeCloseTo(0.455, 10);
 });
 
 test("화면·구간은 소수점을 버린 정수: 49.6 은 49, 60.99 는 41~60 구간", () => {
@@ -65,7 +66,7 @@ test("문서가 없으면 50 에서 계산한 소수 값을 그대로 저장한�
   expect(r.score).toBeCloseTo(50.49, 10);
   expect(r.delta).toBeCloseTo(0.49, 10);
   expect(fake.col("affinity").get("main_bianca_n_a")).toEqual({
-    ...key, score: r.score, updatedAt: Timestamp.fromMillis(T0),
+    ...key, score: r.score, updatedAt: Timestamp.fromMillis(T0), lastGainAt: Timestamp.fromMillis(T0),
   });
 });
 
@@ -102,4 +103,31 @@ test("화면 점수: 페르소나별로 복귀를 반영해 버린 정수, 문�
   expect(shownAffinity(scores, "bianca")).toBe(49);
   expect(shownAffinity(scores, "nobody")).toBe(50);
   expect(affinityByPersona([], T0)).toEqual({});
+});
+
+const MIN = 60_000;
+
+test("오른 뒤 10분 안에는 호의 몫이 0 이고 적대 몫은 그대로 뺀다", () => {
+  expect(affinityDelta(50, 0.98, 0, T0, T0 + 10 * MIN - 1000)).toBe(0);
+  expect(affinityDelta(50, 0.98, 0.97, T0, T0 + 10 * MIN - 1000)).toBeCloseTo(-1.455, 10);
+  expect(affinityDelta(50, 0.98, 0, T0, T0 + 10 * MIN)).toBeCloseTo(0.49, 10);
+});
+
+test("몰아 보낸 칭찬은 10분에 한 번만 오르고, 오르지 않으면 lastGainAt 을 유지한다", async () => {
+  const first = await applyAffinity(db(), { ...key, pos: 0.98, neg: 0, now: T0 });
+  expect(first.delta).toBeCloseTo(0.49, 10);
+  const soon = await applyAffinity(db(), { ...key, pos: 0.98, neg: 0, now: T0 + 10 * MIN - 1000 });
+  expect(soon.delta).toBe(0);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0));
+  const insult = await applyAffinity(db(), { ...key, pos: 0, neg: 0.97, now: T0 + 5 * MIN });
+  expect(insult.delta).toBeCloseTo(-1.455, 10);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0));
+  const later = await applyAffinity(db(), { ...key, pos: 0.98, neg: 0, now: T0 + 10 * MIN });
+  expect(later.delta).toBeGreaterThan(0);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0 + 10 * MIN));
+});
+
+test("처음부터 내려가면 lastGainAt 은 null 이다", async () => {
+  await applyAffinity(db(), { ...key, pos: 0, neg: 0.5, now: T0 });
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toBeNull();
 });

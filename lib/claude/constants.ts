@@ -27,6 +27,8 @@ export const AFFINITY_DECAY_PER_DAY = 0.5;
 export const AFFINITY_GAIN = 1.0;
 /** 적대 점수가 내리는 양의 배율. */
 export const AFFINITY_LOSS = 1.5;
+/** 호감도가 마지막으로 오른 뒤 이 시간 안에는 호의 몫을 0 으로 본다. */
+export const AFFINITY_GAIN_COOLDOWN_MS = 10 * 60_000;
 export const DM_SETTLE_MS = 1_500;
 /** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
 export const BOT_CHAIN_MAX = 3;

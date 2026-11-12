@@ -1,4 +1,6 @@
-import { AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_LOSS } from "@/lib/claude/constants";
+import {
+  AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_GAIN_COOLDOWN_MS, AFFINITY_LOSS,
+} from "@/lib/claude/constants";
 
 /** 호감도 계산. firebase 를 쓰지 않아 서버와 화면이 같이 쓴다. 저장값은 소수이고, 화면·프롬프트·구간은 버린 정수를 쓴다. */
 
@@ -19,9 +21,18 @@ export function effectiveAffinity(score: number, updatedAtMs: number, nowMs: num
 /**
  * Jev 의 호의·적대 점수(0~1)와 복귀를 반영한 현재 값으로 정한 변화량(소수, 반올림하지 않음).
  * AFFINITY_GAIN × 호의 × (100 − 현재) / 100 − AFFINITY_LOSS × 적대. 높을수록 덜 오르고, 내리기는 쉽다.
+ * 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
  */
-export function affinityDelta(current: number, pos: number, neg: number): number {
-  return (AFFINITY_GAIN * pos * (100 - current)) / 100 - AFFINITY_LOSS * neg;
+export function affinityDelta(
+  current: number,
+  pos: number,
+  neg: number,
+  lastGainAtMs: number | null,
+  nowMs: number,
+): number {
+  const cooling = lastGainAtMs !== null && nowMs - lastGainAtMs < AFFINITY_GAIN_COOLDOWN_MS;
+  const gain = cooling ? 0 : (AFFINITY_GAIN * pos * (100 - current)) / 100;
+  return gain - AFFINITY_LOSS * neg;
 }
 
 /** 화면과 프롬프트에 쓰는 정수(소수점 버림). */

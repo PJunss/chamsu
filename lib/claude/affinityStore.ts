@@ -4,7 +4,8 @@ import { AFFINITY_DEFAULT } from "@/lib/claude/constants";
 
 export type AffinityKey = { roomId: string; personaId: string; uid: string };
 
-type AffinityDoc = { score?: unknown; updatedAt?: { toMillis?: () => number } };
+type Stamp = { toMillis?: () => number };
+type AffinityDoc = { score?: unknown; updatedAt?: Stamp; lastGainAt?: Stamp | null };
 
 function currentScore(data: AffinityDoc | undefined, now: number): number {
   if (!data || typeof data.score !== "number" || typeof data.updatedAt?.toMillis !== "function") return AFFINITY_DEFAULT;
@@ -19,7 +20,7 @@ export async function readAffinity(db: Firestore, key: AffinityKey & { now: numb
 
 /**
  * 트랜잭션으로 복귀를 반영한 현재 값에서 호의·적대 점수로 변화량을 구해 더하고, 0~100 으로 잘라 소수 그대로 저장한다.
- * 새 값과 적용한 변화량을 돌려준다.
+ * 변화량이 0 보다 클 때만 lastGainAt 을 now 로 바꾸고, 아니면 그대로 둔다. 새 값과 적용한 변화량을 돌려준다.
  */
 export async function applyAffinity(
   db: Firestore,
@@ -29,9 +30,20 @@ export async function applyAffinity(
   const ref = db.collection("affinity").doc(affinityDocId(roomId, personaId, uid));
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    const current = currentScore(snap.exists ? (snap.data() as AffinityDoc) : undefined, now);
-    const score = clampAffinity(current + affinityDelta(current, pos, neg));
-    tx.set(ref, { roomId, personaId, uid, score, updatedAt: Timestamp.fromMillis(now) });
+    const data = snap.exists ? (snap.data() as AffinityDoc) : undefined;
+    const current = currentScore(data, now);
+    const lastGain = data?.lastGainAt ?? null;
+    const lastGainAtMs = typeof lastGain?.toMillis === "function" ? lastGain.toMillis() : null;
+    const delta = affinityDelta(current, pos, neg, lastGainAtMs, now);
+    const score = clampAffinity(current + delta);
+    tx.set(ref, {
+      roomId,
+      personaId,
+      uid,
+      score,
+      updatedAt: Timestamp.fromMillis(now),
+      lastGainAt: delta > 0 ? Timestamp.fromMillis(now) : lastGain,
+    });
     return { score, delta: score - current };
   });
 }
