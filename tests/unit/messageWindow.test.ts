@@ -33,6 +33,12 @@ describe("applySnapshot", () => {
     const next = applySnapshot({ older: [], latest: [...asc(3, 1), pending] }, asc(3, 1));
     expect(ids(mergeWindow(next))).toEqual(["3", "2", "1"]);
   });
+  test("창이 다 차지 않으면 사라진 메시지는 지워진 것으로 보고 older 도 비운다", () => {
+    const prev: MessageWindow<M> = { older: asc(100, 51), latest: asc(50, 1) };
+    expect(applySnapshot(prev, [], false)).toEqual({ older: [], latest: [] });
+    const greet = m(0);
+    expect(ids(mergeWindow(applySnapshot(prev, [greet], false)))).toEqual(["0"]);
+  });
   test("latest 로 돌아온 문서는 older 에서 뺀다", () => {
     const next = applySnapshot({ older: asc(5, 4), latest: asc(3, 1) }, asc(4, 2));
     expect(ids(next.older)).toEqual(["5"]);

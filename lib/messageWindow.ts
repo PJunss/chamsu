@@ -13,8 +13,15 @@ function dedupe<T extends WindowItem>(list: T[]): T[] {
 /**
  * 새 구독 결과를 반영한다. 직전 latest 에 있다가 새 창의 가장 오래된 메시지보다 오래돼
  * 창 밖으로 밀려난 메시지는 older 끝으로 옮겨 목록에 남긴다.
+ * full 이 false 면(구독 창이 다 차지 않음) 컬렉션 전체가 창 안에 있다는 뜻이라 밀려난 메시지가 있을 수 없다.
+ * 이때 사라진 메시지는 지워진 것이므로 older 와 함께 비운다(/clear 등).
  */
-export function applySnapshot<T extends WindowItem>(prev: MessageWindow<T>, nextLatest: T[]): MessageWindow<T> {
+export function applySnapshot<T extends WindowItem>(
+  prev: MessageWindow<T>,
+  nextLatest: T[],
+  full: boolean = true,
+): MessageWindow<T> {
+  if (!full) return { older: [], latest: nextLatest };
   const nextIds = new Set(nextLatest.map((m) => m.id));
   const oldest = nextLatest.length > 0 ? time(nextLatest[0]) : Number.POSITIVE_INFINITY;
   const pushedOut = prev.latest.filter((m) => !nextIds.has(m.id) && time(m) < oldest);

@@ -67,7 +67,7 @@ export function useMessages(messagesPath: string) {
         for (const d of snap.docs) snapshots.current.set(d.id, d);
         setOffline(snap.metadata.fromCache);
         setWindowFull(snap.docs.length === PAGE_SIZE);
-        setWin((prev) => applySnapshot(prev, snap.docs.map(toMessage).reverse()));
+        setWin((prev) => applySnapshot(prev, snap.docs.map(toMessage).reverse(), snap.docs.length === PAGE_SIZE));
       },
       () => setOffline(true),
     );
