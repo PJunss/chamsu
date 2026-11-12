@@ -147,7 +147,7 @@ describe("claudeLimits", () => {
 
 test("messages: 비앙카 이름·uid 로는 못 쓴다", async () => {
   await assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "비앙카" })));
-  await assertFails(addDoc(collection(member(), "messages"), msg({ uid: "claude" })));
+  await assertFails(addDoc(collection(member(), "messages"), msg({ uid: "bot_bianca" })));
 });
 
 describe("1:1 방", () => {
@@ -165,7 +165,7 @@ describe("1:1 방", () => {
   }
 
   test("주인은 자기 방 메시지를 읽고 만든다", async () => {
-    await seed(`${MY_ROOM}/messages/m1`, { text: "x", nickname: "비앙카", uid: "claude", createdAt: Timestamp.now() });
+    await seed(`${MY_ROOM}/messages/m1`, { text: "x", nickname: "비앙카", uid: "bot_bianca", createdAt: Timestamp.now() });
     await assertSucceeds(getDocs(collection(me(), `${MY_ROOM}/messages`)));
     await assertSucceeds(addDoc(collection(me(), `${MY_ROOM}/messages`), dmMsg()));
   });

@@ -49,12 +49,12 @@ test("부르는 말이 없으면 빈 배열", () => {
 });
 
 test("uid·id 로 찾는다", () => {
-  expect(findPersonaByUid("claude")?.id).toBe("bianca");
+  expect(findPersonaByUid("bot_bianca")?.id).toBe("bianca");
   expect(findPersonaByUid("n_abc")).toBeNull();
-  expect(findPersonaById("bianca")?.uid).toBe("claude");
+  expect(findPersonaById("bianca")?.uid).toBe("bot_bianca");
   expect(findPersonaById("nobody")).toBeNull();
   expect(findPersonaByUid("bot_b", fake)?.id).toBe("b");
-  expect(isBotUid("claude")).toBe(true);
+  expect(isBotUid("bot_bianca")).toBe(true);
   expect(isBotUid("n_abc")).toBe(false);
   expect(isBotUid("bot_a", fake)).toBe(true);
 });

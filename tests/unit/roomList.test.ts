@@ -5,7 +5,7 @@ import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
 
 const ME = "n_" + "0123456789abcdef".repeat(2);
 const fake: PersonaInfo[] = [
-  { id: "bianca", uid: "claude", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
+  { id: "bianca", uid: "bot_bianca", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
   { id: "kuro", uid: "bot_kuro", nickname: "쿠로", trigger: "@쿠로", avatar: "/kuro.png" },
 ];
 

@@ -51,7 +51,7 @@ function putMessage(id: string, uid: string, nickname: string, text: string, ms:
   fake.col(path).set(id, { uid, nickname, text, createdAt: ts(ms) });
 }
 
-const BOT_UIDS = ["claude", "bot_lucia"];
+const BOT_UIDS = ["bot_bianca", "bot_lucia"];
 const botReplies = (path = "messages") =>
   [...fake.col(path).values()].filter((m: Data) => BOT_UIDS.includes(m.uid as string) && m.replyTo !== undefined);
 const job = (id: string, path = "claudeJobs") => fake.col(path).get(id);
@@ -91,7 +91,7 @@ describe("POST /api/claude 단체방", () => {
     expect(answer).not.toHaveBeenCalled();
   });
   test("질문자가 봇이면 400", async () => {
-    putMessage("b", "claude", "비앙카", "@비앙카 안녕", NOW - 1000);
+    putMessage("b", "bot_bianca", "비앙카", "@비앙카 안녕", NOW - 1000);
     expect((await POST(req({ messageId: "b" }))).status).toBe(400);
     expect(answer).not.toHaveBeenCalled();
   });
@@ -125,7 +125,7 @@ describe("POST /api/claude 단체방", () => {
   });
   test("roomId 를 생략하면 main 이고, 맥락·기억으로 답해 비앙카 이름으로 쓴다", async () => {
     putMessage("a", "u2", "영희", "점심 뭐 먹지", NOW - 5000);
-    putMessage("c", "claude", "비앙카", "김밥", NOW - 4000);
+    putMessage("c", "bot_bianca", "비앙카", "김밥", NOW - 4000);
     const memories = [{ text: "고수 싫어", nickname: "영희", context: [], createdAt: new Date(NOW - 86_400_000) }];
     recallMemories.mockResolvedValue(memories);
     const res = await POST(req({ messageId: "q" }));
@@ -143,7 +143,7 @@ describe("POST /api/claude 단체방", () => {
     expect(input.memories).toBe(memories);
     expect(input.history.map((m) => m.id)).toEqual(["a", "c", "q"]);
     expect(botReplies()).toEqual([
-      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "q", chainDepth: 1, chainRootUid: "u1" }),
+      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "bot_bianca", replyTo: "q", chainDepth: 1, chainRootUid: "u1" }),
     ]);
     expect(job("q_bianca")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "bianca" }));
     expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: "main" }), fake.col("messages").get("q")!.createdAt);
@@ -212,7 +212,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     for (const call of answer.mock.calls) expect(call[0].history.map((m) => m.id)).toEqual(["q", "m2"]);
     expect(botReplies()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ text: "비앙카 답", uid: "claude", replyTo: "m2", chainDepth: 1, chainRootUid: "u1" }),
+        expect.objectContaining({ text: "비앙카 답", uid: "bot_bianca", replyTo: "m2", chainDepth: 1, chainRootUid: "u1" }),
         expect.objectContaining({ text: "루치아 답", uid: "bot_lucia", replyTo: "m2", chainDepth: 1, chainRootUid: "u1" }),
       ]),
     );
@@ -249,7 +249,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     expect(await res.json()).toEqual({ ok: true, personas: ["lucia"] });
     expect(botReplies()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ uid: "claude", text: REPLY_TEXT.failed, chainDepth: 1, chainRootUid: "u1" }),
+        expect.objectContaining({ uid: "bot_bianca", text: REPLY_TEXT.failed, chainDepth: 1, chainRootUid: "u1" }),
         expect.objectContaining({ uid: "bot_lucia", text: "루치아 답" }),
       ]),
     );
@@ -307,7 +307,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     const res = await POST(req({ messageId: "m2" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, personas: ["bianca"] });
-    expect(botReplies()).toEqual([expect.objectContaining({ uid: "claude", text: "비앙카 답" })]);
+    expect(botReplies()).toEqual([expect.objectContaining({ uid: "bot_bianca", text: "비앙카 답" })]);
     expect(job("m2_bianca")?.status).toBe("done");
     expect(job("m2_lucia")?.status).toBe("failed");
   });
@@ -327,7 +327,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     });
     const res = await POST(req({ messageId: "m2" }));
     expect(res.status).toBe(502);
-    expect(botReplies()).toEqual([expect.objectContaining({ uid: "claude", text: REPLY_TEXT.failed })]);
+    expect(botReplies()).toEqual([expect.objectContaining({ uid: "bot_bianca", text: REPLY_TEXT.failed })]);
   });
 
   test("두 봇을 부른 요청에서 기억 저장은 한 번만 돈다", async () => {
@@ -338,7 +338,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
 
   test("봇 메시지 chainDepth 3 이면 다른 봇이 단계 4 로 답하고 연쇄 시작 사람을 이어받는다", async () => {
     fake.col("messages").set("b3", {
-      uid: "claude", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 3, chainRootUid: "u1",
+      uid: "bot_bianca", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 3, chainRootUid: "u1",
     });
     const res = await POST(req({ messageId: "b3" }));
     expect(res.status).toBe(200);
@@ -352,7 +352,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
 
   test("봇 메시지 chainDepth 4 는 400 이고 답하지 않는다", async () => {
     fake.col("messages").set("b4", {
-      uid: "claude", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 4, chainRootUid: "u1",
+      uid: "bot_bianca", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 4, chainRootUid: "u1",
     });
     expect((await POST(req({ messageId: "b4" }))).status).toBe(400);
     expect(answer).not.toHaveBeenCalled();
@@ -360,7 +360,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
 
   test("봇이 자기 자신만 부른 메시지는 400", async () => {
     fake.col("messages").set("self", {
-      uid: "claude", nickname: "비앙카", text: "나 @비앙카 야", createdAt: ts(NOW - 500), chainDepth: 1, chainRootUid: "u1",
+      uid: "bot_bianca", nickname: "비앙카", text: "나 @비앙카 야", createdAt: ts(NOW - 500), chainDepth: 1, chainRootUid: "u1",
     });
     expect((await POST(req({ messageId: "self" }))).status).toBe(400);
   });
@@ -372,7 +372,7 @@ describe("POST /api/claude 1:1 방", () => {
   });
 
   test("주인 메시지면 그 방 맥락으로 답하고 답·작업을 그 방 경로에 쓴다", async () => {
-    putMessage("d0", "claude", "비앙카", "흐흥", NOW - 3000, DM_MESSAGES);
+    putMessage("d0", "bot_bianca", "비앙카", "흐흥", NOW - 3000, DM_MESSAGES);
     putMessage("x", "u1", "철수", "단체방 말", NOW - 2000);
     const res = await POST(req({ roomId: DM, messageId: "d1" }));
     expect(res.status).toBe(200);
@@ -382,7 +382,7 @@ describe("POST /api/claude 1:1 방", () => {
     expect(input.history.map((m) => m.id)).toEqual(["d0", "d1"]);
     expect(recallMemories.mock.calls[0][3]).toBe("오늘 뭐하지");
     expect(botReplies(DM_MESSAGES)).toEqual([
-      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "d1" }),
+      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "bot_bianca", replyTo: "d1" }),
     ]);
     expect(botReplies("messages")).toEqual([]);
     expect(job("d1_bianca", DM_JOBS)).toEqual(expect.objectContaining({ status: "done", askedBy: OWNER, personaId: "bianca" }));
@@ -415,7 +415,7 @@ describe("POST /api/claude 1:1 방", () => {
 
   test("기다리는 동안 온 봇 메시지는 건너뛸 이유가 아니다", async () => {
     sleep.mockImplementation(async () => {
-      putMessage("b1", "claude", "비앙카", "앞 답", NOW - 200, DM_MESSAGES);
+      putMessage("b1", "bot_bianca", "비앙카", "앞 답", NOW - 200, DM_MESSAGES);
     });
     expect((await POST(req({ roomId: DM, messageId: "d1" }))).status).toBe(200);
     expect(answer).toHaveBeenCalledTimes(1);

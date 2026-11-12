@@ -6,7 +6,7 @@
 export type PersonaInfo = { id: string; uid: string; nickname: string; trigger: string; avatar: string };
 
 export const PERSONAS: readonly PersonaInfo[] = [
-  { id: "bianca", uid: "claude", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
+  { id: "bianca", uid: "bot_bianca", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
   { id: "lucia", uid: "bot_lucia", nickname: "루치아", trigger: "@루치아", avatar: "/personas/lucia/avatar.png" },
 ];
 

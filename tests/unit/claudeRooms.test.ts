@@ -5,7 +5,7 @@ import type { PersonaInfo } from "@/lib/claude/personas/info";
 const UID = "n_" + "0123456789abcdef".repeat(2);
 const OTHER = "n_" + "fedcba9876543210".repeat(2);
 const fake: PersonaInfo[] = [
-  { id: "bianca", uid: "claude", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
+  { id: "bianca", uid: "bot_bianca", nickname: "비앙카", trigger: "@비앙카", avatar: "/personas/bianca/avatar.jpeg" },
   { id: "kuro", uid: "bot_kuro", nickname: "쿠로", trigger: "@쿠로", avatar: "/kuro.png" },
 ];
 
@@ -117,6 +117,6 @@ test("1:1 방은 주인 메시지 전체가 질문이고 봇 메시지는 null",
     chainRootUid: UID,
   });
   expect(pickTargets(room, { uid: OTHER, text: "hi" })).toBeNull();
-  expect(pickTargets(room, { uid: "claude", text: "hi", chainDepth: 1, chainRootUid: UID })).toBeNull();
+  expect(pickTargets(room, { uid: "bot_bianca", text: "hi", chainDepth: 1, chainRootUid: UID })).toBeNull();
   expect(pickTargets(room, { uid: UID, text: "   " })).toBeNull();
 });

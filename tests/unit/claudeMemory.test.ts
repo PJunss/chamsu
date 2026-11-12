@@ -37,11 +37,11 @@ const jm = (id: string, uid: string, nickname: string, text: string, ms: number)
 });
 
 test("judgeRange: 봇 제외, 앞 사람 메시지 최대 2개를 context 로", () => {
-  const isBot = (u: string) => u === "claude";
+  const isBot = (u: string) => u === "bot_bianca";
   const { targets, context } = judgeRange(
     [
       jm("1", "a", "철수", "하나", 1),
-      jm("2", "claude", "비앙카", "봇말", 2),
+      jm("2", "bot_bianca", "비앙카", "봇말", 2),
       jm("3", "b", "영희", "둘", 3),
       jm("4", "a", "철수", "셋", 4),
       jm("5", "b", "영희", "넷", 5),
@@ -76,7 +76,7 @@ function fakeJev(table: Record<string, number>) {
 test("rememberSince: 0.6 이상만 원문 그대로 저장하고 lastJudgedAt 을 범위 끝으로", async () => {
   putMsg("messages", "m1", "a", "민수", "생일 언제야?", T0);
   putMsg("messages", "m2", "b", "현석", "내 생일 3월 14일임", T0 + 1000);
-  putMsg("messages", "m3", "claude", "비앙카", "기억하마", T0 + 2000);
+  putMsg("messages", "m3", "bot_bianca", "비앙카", "기억하마", T0 + 2000);
   putMsg("messages", "m4", "a", "민수", "고수 별로", T0 + 3000);
   putMsg("messages", "m5", "a", "민수", "나중 말", T0 + 9000);
   const askJev = fakeJev({ "내 생일 3월 14일임": 0.6, "고수 별로": 0.59 });

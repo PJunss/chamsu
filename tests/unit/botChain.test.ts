@@ -4,13 +4,13 @@ import type { PersonaInfo } from "@/lib/claude/personas/info";
 
 const ME = "n_me";
 const list: PersonaInfo[] = [
-  { id: "bianca", uid: "claude", nickname: "비앙카", trigger: "@비앙카", avatar: "/b.png" },
+  { id: "bianca", uid: "bot_bianca", nickname: "비앙카", trigger: "@비앙카", avatar: "/b.png" },
   { id: "lucia", uid: "bot_lucia", nickname: "루치아", trigger: "@루치아", avatar: "/l.png" },
 ];
 const AFTER = 1_000;
 const bot = (id: string, over: Partial<{ uid: string; text: string; ms: number; chainDepth: number; chainRootUid: string }> = {}) => ({
   id,
-  uid: over.uid ?? "claude",
+  uid: over.uid ?? "bot_bianca",
   text: over.text ?? "@루치아 넌 어때?",
   createdAt: new Date(over.ms ?? 2_000),
   chainDepth: over.chainDepth ?? 1,
