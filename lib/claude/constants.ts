@@ -14,7 +14,7 @@ export const RECALL_THRESHOLD = 0.25;
 export const RECALL_MAX = 5;
 export const JUDGE_READ_MAX = 600;
 export const JUDGE_BATCH = 300;
-export const JUDGE_THRESHOLD = 0.8;
+export const JUDGE_THRESHOLD = 0.6;
 export const DM_SETTLE_MS = 1_500;
 
 /** 봇 사용량 제한. 값이 null 인 제한은 검사하지 않는다. 켤 때의 예: { user: { windowMs: 60_000, max: 5 }, dailyMax: 200 } */

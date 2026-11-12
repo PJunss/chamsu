@@ -73,13 +73,13 @@ function fakeJev(table: Record<string, number>) {
   });
 }
 
-test("rememberSince: 0.8 이상만 원문 그대로 저장하고 lastJudgedAt 을 범위 끝으로", async () => {
+test("rememberSince: 0.6 이상만 원문 그대로 저장하고 lastJudgedAt 을 범위 끝으로", async () => {
   putMsg("messages", "m1", "a", "민수", "생일 언제야?", T0);
   putMsg("messages", "m2", "b", "현석", "내 생일 3월 14일임", T0 + 1000);
   putMsg("messages", "m3", "claude", "비앙카", "기억하마", T0 + 2000);
   putMsg("messages", "m4", "a", "민수", "고수 별로", T0 + 3000);
   putMsg("messages", "m5", "a", "민수", "나중 말", T0 + 9000);
-  const askJev = fakeJev({ "내 생일 3월 14일임": 0.8, "고수 별로": 0.79 });
+  const askJev = fakeJev({ "내 생일 3월 14일임": 0.6, "고수 별로": 0.59 });
   const r = await rememberSince(db(), main, Timestamp.fromMillis(T0 + 3000), { askJev, env });
   expect(r).toEqual({ judged: 3, saved: 1 });
   expect(askJev).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ test("rememberSince: 0.8 이상만 원문 그대로 저장하고 lastJudgedAt �
     roomId: "main",
     messageId: "m2",
     createdAt: expect.anything(),
-    score: 0.8,
+    score: 0.6,
   });
   expect((doc.createdAt as Timestamp).toMillis()).toBe(T0 + 1000);
   expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 + 3000);
