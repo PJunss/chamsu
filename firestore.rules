@@ -7,11 +7,8 @@ service cloud.firestore {
     function isSelf(uid) {
       return isMember() && request.auth.uid == uid;
     }
-
-    match /messages/{id} {
-      allow read: if isMember();
-      allow create: if isMember()
-        && request.resource.data.keys().hasOnly(['text', 'nickname', 'uid', 'createdAt'])
+    function validMessage() {
+      return request.resource.data.keys().hasOnly(['text', 'nickname', 'uid', 'createdAt'])
         && request.resource.data.keys().hasAll(['text', 'nickname', 'uid', 'createdAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.nickname == request.auth.token.nickname
@@ -19,6 +16,15 @@ service cloud.firestore {
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 500
         && request.resource.data.createdAt == request.time;
+    }
+    // 1:1 방 id 는 dm_{personaId}_{uid} 이고 uid 가 요청자면 그 사람의 방이다
+    function isRoomOwner(roomId) {
+      return isMember() && roomId.matches('dm_[a-z0-9]+_' + request.auth.uid);
+    }
+
+    match /messages/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && validMessage();
     }
 
     match /presence/{uid} {
@@ -33,6 +39,15 @@ service cloud.firestore {
 
     match /claudeJobs/{id} {
       allow read: if isMember();
+    }
+
+    match /rooms/{roomId}/messages/{id} {
+      allow read: if isRoomOwner(roomId);
+      allow create: if isRoomOwner(roomId) && validMessage();
+    }
+
+    match /rooms/{roomId}/claudeJobs/{id} {
+      allow read: if isRoomOwner(roomId);
     }
   }
 }
