@@ -1,12 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { FieldValue, type Timestamp } from "firebase-admin/firestore";
+import { after } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { answer } from "@/lib/claude/answer";
+import { CHAIN_HEADER, chainToken, isChainRequest } from "@/lib/claude/chainToken";
 import { CONTEXT_SIZE, DM_SETTLE_MS, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
+import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
 import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
 import { sleep } from "@/lib/claude/sleep";
@@ -39,6 +42,28 @@ type JobStatus = "done" | "failed" | "skipped";
 /** 작업 문서를 만든 봇 하나. 봇마다 타이밍 로그 한 줄을 남긴다. */
 type BotJob = { persona: PersonaConfig; timing: Timing; mark: (status: JobStatus) => Promise<void> };
 
+/** 연쇄 요청은 접수(202)까지만 기다린다. */
+const CHAIN_TIMEOUT_MS = 10_000;
+
+/** 봇 답 메시지마다 자기 /api/claude 를 불러 다음 봇이 잇게 한다. 실패하면 로그만 남기고 연쇄는 거기서 멈춘다. */
+async function chainNext(url: URL, roomId: string, messageIds: readonly string[]): Promise<void> {
+  await Promise.all(
+    messageIds.map(async (messageId) => {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json", [CHAIN_HEADER]: chainToken() },
+          body: JSON.stringify({ roomId, messageId }),
+          signal: AbortSignal.timeout(CHAIN_TIMEOUT_MS),
+        });
+        if (res.status !== 202) console.error("claude chain failed", `message=${messageId}`, `status=${res.status}`);
+      } catch (e) {
+        console.error("claude chain failed", `message=${messageId}`, errName(e));
+      }
+    }),
+  );
+}
+
 export async function POST(req: Request) {
   let body: { roomId?: unknown; messageId?: unknown } | null;
   try {
@@ -52,6 +77,7 @@ export async function POST(req: Request) {
   const room = resolveRoom(roomId);
   if (!room) return fail("bad_request", 400);
   const id = messageId;
+  const internal = isChainRequest(req);
 
   try {
     const db = getAdminDb();
@@ -59,7 +85,8 @@ export async function POST(req: Request) {
     const snap = await messages.doc(id).get();
     if (!snap.exists) return fail("not_found", 404);
     const q = snap.data() as QuestionDoc;
-    const target = typeof q.text === "string" ? pickTargets(room, { ...q, text: q.text }) : null;
+    if (isBotUid(q.uid) && !internal) return fail("forbidden", 403);
+    const target = typeof q.text === "string" ? pickTargets(room, { ...q, text: q.text }, PERSONAS, { internal }) : null;
     const personas = (target?.personas ?? []).map((p) => getPersonaConfig(p.id)).filter((p) => p !== null);
     if (!target || personas.length === 0) return fail("bad_request", 400);
     const now = Date.now();
@@ -129,6 +156,9 @@ export async function POST(req: Request) {
       }
     }
 
+    /** 실제 답을 쓴 봇의 답 메시지. 다음 연쇄를 고르는 데 쓴다. */
+    const answered: { id: string; uid: string; text: string }[] = [];
+
     const runBot = async ({ persona, timing, mark }: BotJob): Promise<BotResult> => {
       const reply = (text: string) =>
         messages.add({
@@ -181,7 +211,8 @@ export async function POST(req: Request) {
           await mark("failed");
           return "failed";
         }
-        await reply(text);
+        const ref = await reply(text);
+        answered.push({ id: ref.id, uid: persona.info.uid, text });
         await mark("done");
         timing.lap("reply");
         timing.note("result", "ok");
@@ -194,27 +225,50 @@ export async function POST(req: Request) {
       }
     };
 
-    let results: BotResult[];
-    try {
-      results = await Promise.all(jobs.map(runBot));
-    } finally {
-      logTimings();
-    }
-
-    /** 기억 저장은 요청 하나에서 모든 봇의 답을 쓴 뒤 한 번만 돈다. */
-    if (jobs.some((j, i) => results[i] === "ok" && j.persona.useMemory !== false)) {
+    /** 답 만들기·쓰기·기억 저장·다음 연쇄 예약. 사람 요청은 이 결과로 응답하고, 연쇄 요청은 after() 안에서 돌린다. */
+    const finish = async (): Promise<Response> => {
+      let results: BotResult[];
       try {
-        const r = await rememberSince(db, room, q.createdAt);
-        console.log("claude remember", `judged=${r.judged}`, `saved=${r.saved}`);
-      } catch (e) {
-        console.error("remember failed", errName(e));
-        console.log("claude remember", `error=${errName(e)}`);
+        results = await Promise.all(jobs.map(runBot));
+      } finally {
+        logTimings();
       }
-    }
 
-    const outcome = decideOutcome(results);
-    if (outcome !== "ok") return fail(outcome.error, outcome.status);
-    return Response.json({ ok: true, personas: jobs.filter((_, i) => results[i] === "ok").map((j) => j.persona.info.id) });
+      /** 기억 저장은 요청 하나에서 모든 봇의 답을 쓴 뒤 한 번만 돈다. */
+      if (jobs.some((j, i) => results[i] === "ok" && j.persona.useMemory !== false)) {
+        try {
+          const r = await rememberSince(db, room, q.createdAt);
+          console.log("claude remember", `judged=${r.judged}`, `saved=${r.saved}`);
+        } catch (e) {
+          console.error("remember failed", errName(e));
+          console.log("claude remember", `error=${errName(e)}`);
+        }
+      }
+
+      const next = answered
+        .filter((a) => pickTargets(room, { uid: a.uid, text: a.text, chainDepth, chainRootUid }, PERSONAS, { internal: true }))
+        .map((a) => a.id);
+      if (next.length > 0) {
+        const url = new URL("/api/claude", req.url);
+        after(() => chainNext(url, room.id, next));
+      }
+
+      const outcome = decideOutcome(results);
+      if (outcome !== "ok") return fail(outcome.error, outcome.status);
+      return Response.json({ ok: true, personas: jobs.filter((_, i) => results[i] === "ok").map((j) => j.persona.info.id) });
+    };
+
+    if (internal) {
+      after(async () => {
+        try {
+          await finish();
+        } catch (e) {
+          console.error("claude route failed", errName(e));
+        }
+      });
+      return Response.json({ accepted: jobs.map((j) => j.persona.info.id) }, { status: 202 });
+    }
+    return await finish();
   } catch (e) {
     console.error("claude route failed", errName(e));
     return fail("server_error", 500);

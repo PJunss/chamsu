@@ -43,8 +43,6 @@ export function useMessages(messagesPath: string) {
   const [windowFull, setWindowFull] = useState(false);
   const [exhausted, setExhausted] = useState(false);
   const [offline, setOffline] = useState(false);
-  /** 지금 경로에서 서버 스냅샷을 한 번이라도 받았는지. 캐시 스냅샷만 받은 동안은 false 다. */
-  const [synced, setSynced] = useState(false);
   const snapshots = useRef(new Map<string, QueryDocumentSnapshot>());
   const loading = useRef(false);
   /** 경로가 바뀔 때마다 늘어난다. 이전 방에서 시작한 loadOlder 결과를 버리는 데 쓴다. */
@@ -55,7 +53,6 @@ export function useMessages(messagesPath: string) {
     setWin(EMPTY);
     setWindowFull(false);
     setExhausted(false);
-    setSynced(false);
   }
 
   useEffect(() => {
@@ -69,7 +66,6 @@ export function useMessages(messagesPath: string) {
       (snap) => {
         for (const d of snap.docs) snapshots.current.set(d.id, d);
         setOffline(snap.metadata.fromCache);
-        if (!snap.metadata.fromCache) setSynced(true);
         setWindowFull(snap.docs.length === PAGE_SIZE);
         setWin((prev) => applySnapshot(prev, snap.docs.map(toMessage).reverse()));
       },
@@ -104,5 +100,5 @@ export function useMessages(messagesPath: string) {
 
   const hasOlder = !exhausted && (windowFull || win.older.length > 0);
 
-  return { messages, loadOlder, hasOlder, offline, synced };
+  return { messages, loadOlder, hasOlder, offline };
 }

@@ -57,13 +57,15 @@ export type Targets = { personas: PersonaInfo[]; question: string; chainDepth: n
 
 /**
  * 그 방에서 답할 메시지면 답할 페르소나들과 질문, 그 답에 저장할 연쇄 단계·연쇄를 시작한 사람.
- * 단체방은 부르는 말로 찾고, 봇 메시지는 chainDepth 가 BOT_CHAIN_MAX 이하일 때만 자기 말고 다른 봇을 부른다.
+ * 단체방은 부르는 말로 찾는다. 봇 메시지는 서버 내부 연쇄 요청(internal)이고 chainDepth 가 BOT_CHAIN_MAX 이하일 때만
+ * 자기 말고 다른 봇을 부른다.
  * 1:1 방은 주인이 쓴 메시지 전체가 질문이다.
  */
 export function pickTargets(
   room: Room,
   message: ChainMessage,
   list: readonly PersonaInfo[] = PERSONAS,
+  opts: { internal?: boolean } = {},
 ): Targets | null {
   const question = message.text.trim();
   if (room.kind === "group") {
@@ -71,6 +73,7 @@ export function pickTargets(
     if (!isBotUid(message.uid, list)) {
       return mentioned.length > 0 ? { personas: mentioned, question, chainDepth: 1, chainRootUid: message.uid } : null;
     }
+    if (!opts.internal) return null;
     const { chainDepth, chainRootUid } = message;
     if (typeof chainDepth !== "number" || !Number.isInteger(chainDepth) || chainDepth < 1 || chainDepth > BOT_CHAIN_MAX) return null;
     if (typeof chainRootUid !== "string" || !chainRootUid) return null;

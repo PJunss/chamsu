@@ -28,8 +28,17 @@ vi.mock("@/lib/claude/memory", () => ({
 }));
 vi.mock("@/lib/claude/sleep", () => ({ sleep: (ms: number) => sleep(ms) }));
 
+/** after() 에 넘긴 일. 시험이 runAfter 로 직접 돌린다. 안에서 다시 after() 를 부르면 이어서 돈다. */
+const afterTasks: (() => unknown)[] = [];
+vi.mock("next/server", () => ({ after: (task: () => unknown) => void afterTasks.push(task) }));
+async function runAfter() {
+  while (afterTasks.length > 0) await afterTasks.shift()!();
+}
+const fetchMock = vi.fn<(url: URL, init: RequestInit) => Promise<Response>>();
+
 import { POST, maxDuration } from "@/app/api/claude/route";
 import { getPersonaConfig } from "@/lib/claude/personas";
+import { CHAIN_HEADER, chainToken } from "@/lib/claude/chainToken";
 
 const REPLY_TEXT = getPersonaConfig("bianca")!.replyText;
 const NOW = Date.UTC(2026, 10, 11, 3, 0);
@@ -39,10 +48,10 @@ const DM = `dm_bianca_${OWNER}`;
 const DM_MESSAGES = `rooms/${DM}/messages`;
 const DM_JOBS = `rooms/${DM}/claudeJobs`;
 
-function req(body: unknown) {
+function req(body: unknown, headers: Record<string, string> = {}) {
   return new Request("http://localhost/api/claude", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 }
@@ -67,6 +76,11 @@ beforeEach(() => {
   rememberSince.mockReset().mockResolvedValue({ judged: 0, saved: 0 });
   sleep.mockReset().mockResolvedValue(undefined);
   vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+  afterTasks.length = 0;
+  fetchMock.mockReset().mockResolvedValue(new Response(null, { status: 202 }));
+  vi.stubGlobal("fetch", fetchMock);
   putMessage("q", "u1", "철수", "@비앙카 안녕", NOW - 1000);
 });
 
@@ -90,9 +104,10 @@ describe("POST /api/claude 단체방", () => {
     expect((await POST(req({ roomId: "main", messageId: "p" }))).status).toBe(400);
     expect(answer).not.toHaveBeenCalled();
   });
-  test("질문자가 봇이면 400", async () => {
-    putMessage("b", "bot_bianca", "비앙카", "@비앙카 안녕", NOW - 1000);
-    expect((await POST(req({ messageId: "b" }))).status).toBe(400);
+  test("연쇄 토큰 없이 봇 메시지로 부르면 403", async () => {
+    putMessage("b", "bot_bianca", "비앙카", "@루치아 안녕", NOW - 1000);
+    expect((await POST(req({ messageId: "b" }))).status).toBe(403);
+    expect((await POST(req({ messageId: "b" }, { [CHAIN_HEADER]: "wrong" }))).status).toBe(403);
     expect(answer).not.toHaveBeenCalled();
   });
   test("2분이 지난 질문은 410", async () => {
@@ -336,33 +351,83 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     expect(rememberSince).toHaveBeenCalledTimes(1);
   });
 
-  test("봇 메시지 chainDepth 3 이면 다른 봇이 단계 4 로 답하고 연쇄 시작 사람을 이어받는다", async () => {
-    fake.col("messages").set("b3", {
-      uid: "bot_bianca", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 3, chainRootUid: "u1",
-    });
-    const res = await POST(req({ messageId: "b3" }));
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, personas: ["lucia"] });
+  const chain = () => ({ [CHAIN_HEADER]: chainToken() });
+  const putBot = (id: string, uid: string, text: string, chainDepth: number) =>
+    fake.col("messages").set(id, { uid, nickname: "봇", text, createdAt: ts(NOW - 500), chainDepth, chainRootUid: "u1" });
+
+  test("토큰이 맞는 봇 메시지는 작업을 만들고 202, 답은 after 에서 단계를 올려 쓴다", async () => {
+    putBot("b3", "bot_bianca", "@루치아 너는?", 3);
+    const res = await POST(req({ messageId: "b3" }, chain()));
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ accepted: ["lucia"] });
+    expect(job("b3_lucia")).toEqual(expect.objectContaining({ status: "pending", askedBy: "u1", personaId: "lucia" }));
+    expect(answer).not.toHaveBeenCalled();
+    await runAfter();
     expect(consumeClaudeQuota).toHaveBeenCalledWith("u1", NOW);
-    expect(job("b3_lucia")).toEqual(expect.objectContaining({ askedBy: "u1", personaId: "lucia" }));
+    expect(job("b3_lucia")?.status).toBe("done");
     expect(botReplies().filter((m) => m.replyTo === "b3")).toEqual([
       expect.objectContaining({ uid: "bot_lucia", chainDepth: 4, chainRootUid: "u1" }),
     ]);
+    expect(rememberSince).toHaveBeenCalledTimes(1);
   });
 
-  test("봇 메시지 chainDepth 4 는 400 이고 답하지 않는다", async () => {
-    fake.col("messages").set("b4", {
-      uid: "bot_bianca", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 4, chainRootUid: "u1",
-    });
-    expect((await POST(req({ messageId: "b4" }))).status).toBe(400);
+  test("토큰이 맞아도 chainDepth 4 인 봇 메시지는 400 이고 답하지 않는다", async () => {
+    putBot("b4", "bot_bianca", "@루치아 너는?", 4);
+    expect((await POST(req({ messageId: "b4" }, chain()))).status).toBe(400);
+    await runAfter();
     expect(answer).not.toHaveBeenCalled();
   });
 
-  test("봇이 자기 자신만 부른 메시지는 400", async () => {
-    fake.col("messages").set("self", {
-      uid: "bot_bianca", nickname: "비앙카", text: "나 @비앙카 야", createdAt: ts(NOW - 500), chainDepth: 1, chainRootUid: "u1",
-    });
-    expect((await POST(req({ messageId: "self" }))).status).toBe(400);
+  test("토큰이 맞아도 봇이 자기 자신만 부른 메시지는 400", async () => {
+    putBot("self", "bot_bianca", "나 @비앙카 야", 1);
+    expect((await POST(req({ messageId: "self" }, chain()))).status).toBe(400);
+  });
+
+  test("답이 다른 봇을 부르면 after 에서 내부 요청을 한 번 보낸다", async () => {
+    answer.mockResolvedValue("@루치아 너는 어때?");
+    const res = await POST(req({ messageId: "q" }));
+    expect(res.status).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await runAfter();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const reply = botReplies().find((m) => m.replyTo === "q")!;
+    const replyId = [...fake.col("messages").entries()].find(([, m]) => m === reply)?.[0];
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe("http://localhost/api/claude");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "content-type": "application/json", [CHAIN_HEADER]: chainToken() });
+    expect(JSON.parse(init.body as string)).toEqual({ roomId: "main", messageId: replyId });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("단계 4 인 답은 다른 봇을 불러도 내부 요청을 보내지 않는다", async () => {
+    putBot("b3", "bot_lucia", "@비앙카 너는?", 3);
+    answer.mockResolvedValue("@루치아 너도?");
+    expect((await POST(req({ messageId: "b3" }, chain()))).status).toBe(202);
+    await runAfter();
+    expect(botReplies().filter((m) => m.replyTo === "b3")).toEqual([expect.objectContaining({ chainDepth: 4 })]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("답이 자기 자신만 부르면 내부 요청을 보내지 않는다", async () => {
+    answer.mockResolvedValue("나 @비앙카 는 잘 지내");
+    await POST(req({ messageId: "q" }));
+    await runAfter();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("내부 요청이 실패하거나 202 가 아니면 throw 없이 로그만 남긴다", async () => {
+    answer.mockResolvedValue("@루치아 너는 어때?");
+    fetchMock.mockRejectedValueOnce(new Error("network"));
+    expect((await POST(req({ messageId: "q" }))).status).toBe(200);
+    await expect(runAfter()).resolves.toBeUndefined();
+    expect(console.error).toHaveBeenCalledWith("claude chain failed", expect.stringMatching(/^message=/), "Error");
+
+    putMessage("q2", "u1", "철수", "@비앙카 또", NOW - 900);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 409 }));
+    expect((await POST(req({ messageId: "q2" }))).status).toBe(200);
+    await runAfter();
+    expect(console.error).toHaveBeenCalledWith("claude chain failed", expect.stringMatching(/^message=/), "status=409");
   });
 });
 

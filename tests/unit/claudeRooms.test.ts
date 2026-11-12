@@ -52,6 +52,16 @@ test("잘못된 방 id 는 null", () => {
   }
 });
 
+const INTERNAL = { internal: true };
+
+test("봇 메시지는 서버 내부 연쇄 요청일 때만 받는다", () => {
+  const room = resolveRoom("main", fake)!;
+  const msg = { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: 1, chainRootUid: UID };
+  expect(pickTargets(room, msg, fake)).toBeNull();
+  expect(pickTargets(room, msg, fake, { internal: false })).toBeNull();
+  expect(pickTargets(room, msg, fake, INTERNAL)?.personas).toEqual([fake[0]]);
+});
+
 const lucy: PersonaInfo = { id: "lucy", uid: "bot_lucy", nickname: "루시", trigger: "@루시", avatar: "/lucy.png" };
 const three = [...fake, lucy];
 
@@ -82,7 +92,7 @@ test("단체방에 없는 페르소나는 대상에서 빠지고, 남는 게 없
 
 test("봇 메시지는 단계를 하나 올리고 연쇄 시작 사람을 이어받는다", () => {
   const room = resolveRoom("main", fake)!;
-  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: 1, chainRootUid: UID }, fake)).toEqual({
+  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: 1, chainRootUid: UID }, fake, INTERNAL)).toEqual({
     personas: [fake[0]], question: "@비앙카 너는?", chainDepth: 2, chainRootUid: UID,
   });
 });
@@ -90,22 +100,22 @@ test("봇 메시지는 단계를 하나 올리고 연쇄 시작 사람을 이어
 test("봇 메시지는 chainDepth 3 까지 받고 4 는 null", () => {
   const room = resolveRoom("main", fake)!;
   const msg = { uid: "bot_kuro", text: "@비앙카 너는?", chainRootUid: UID };
-  expect(pickTargets(room, { ...msg, chainDepth: 3 }, fake)?.chainDepth).toBe(4);
-  expect(pickTargets(room, { ...msg, chainDepth: 4 }, fake)).toBeNull();
+  expect(pickTargets(room, { ...msg, chainDepth: 3 }, fake, INTERNAL)?.chainDepth).toBe(4);
+  expect(pickTargets(room, { ...msg, chainDepth: 4 }, fake, INTERNAL)).toBeNull();
 });
 
 test("봇 메시지에 chainDepth 나 chainRootUid 가 없으면 null", () => {
   const room = resolveRoom("main", fake)!;
-  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainRootUid: UID }, fake)).toBeNull();
-  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: "1", chainRootUid: UID }, fake)).toBeNull();
-  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: 1 }, fake)).toBeNull();
+  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainRootUid: UID }, fake, INTERNAL)).toBeNull();
+  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: "1", chainRootUid: UID }, fake, INTERNAL)).toBeNull();
+  expect(pickTargets(room, { uid: "bot_kuro", text: "@비앙카 너는?", chainDepth: 1 }, fake, INTERNAL)).toBeNull();
 });
 
 test("봇은 자기 자신을 부르지 않고, 다른 봇이 없으면 null", () => {
   const room = resolveRoom("main", three)!;
-  expect(pickTargets(room, { uid: "bot_kuro", text: "@쿠로 @루시 안녕", chainDepth: 1, chainRootUid: UID }, three)?.personas).toEqual([lucy]);
-  expect(pickTargets(room, { uid: "bot_kuro", text: "나 @쿠로 야", chainDepth: 1, chainRootUid: UID }, three)).toBeNull();
-  expect(pickTargets(room, { uid: "bot_kuro", text: "그냥 말", chainDepth: 1, chainRootUid: UID }, three)).toBeNull();
+  expect(pickTargets(room, { uid: "bot_kuro", text: "@쿠로 @루시 안녕", chainDepth: 1, chainRootUid: UID }, three, INTERNAL)?.personas).toEqual([lucy]);
+  expect(pickTargets(room, { uid: "bot_kuro", text: "나 @쿠로 야", chainDepth: 1, chainRootUid: UID }, three, INTERNAL)).toBeNull();
+  expect(pickTargets(room, { uid: "bot_kuro", text: "그냥 말", chainDepth: 1, chainRootUid: UID }, three, INTERNAL)).toBeNull();
 });
 
 test("1:1 방은 주인 메시지 전체가 질문이고 봇 메시지는 null", () => {
@@ -117,6 +127,6 @@ test("1:1 방은 주인 메시지 전체가 질문이고 봇 메시지는 null",
     chainRootUid: UID,
   });
   expect(pickTargets(room, { uid: OTHER, text: "hi" })).toBeNull();
-  expect(pickTargets(room, { uid: "bot_bianca", text: "hi", chainDepth: 1, chainRootUid: UID })).toBeNull();
+  expect(pickTargets(room, { uid: "bot_bianca", text: "hi", chainDepth: 1, chainRootUid: UID }, undefined, INTERNAL)).toBeNull();
   expect(pickTargets(room, { uid: UID, text: "   " })).toBeNull();
 });

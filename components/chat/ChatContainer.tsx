@@ -6,7 +6,6 @@ import { getClientDb } from "@/lib/firebaseClient";
 import { useMessages } from "@/components/chat/useMessages";
 import { usePresence } from "@/components/chat/usePresence";
 import { useClaudeTyping } from "@/components/chat/useClaudeTyping";
-import { useBotChain } from "@/components/chat/useBotChain";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
 import { ChatMobile } from "@/components/chat/mobile/ChatMobile";
@@ -39,7 +38,7 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
   const room = resolveRoom(roomId)!;
   const dmPersona = room.kind === "dm" ? findPersonaById(room.personaIds[0]) : null;
 
-  const { messages, loadOlder, hasOlder, offline, synced } = useMessages(room.messagesPath);
+  const { messages, loadOlder, hasOlder, offline } = useMessages(room.messagesPath);
   const online = usePresence(uid, nickname);
   const typing = useClaudeTyping(room.jobsPath);
   const [claudeFailed, setClaudeFailed] = useState<string | null>(null);
@@ -55,12 +54,6 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
     setClaudeFailed(null);
   }, []);
   const backToList = useCallback(() => setShowList(true), []);
-
-  /** 봇 답이 다른 봇을 부르면 이어서 부른다. 실패하면 연쇄가 거기서 멈출 뿐 따로 알리지 않는다. */
-  const callChain = useCallback((messageId: string) => {
-    void callClaude(MAIN_ROOM_ID, messageId);
-  }, []);
-  useBotChain(roomId, room.kind === "group", messages, synced, uid, callChain);
 
   const send = useCallback(
     async (text: string) => {
