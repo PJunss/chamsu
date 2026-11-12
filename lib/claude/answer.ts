@@ -19,6 +19,8 @@ export type AnswerDeps = {
   askHelper?: typeof askHelper;
   env?: NodeJS.ProcessEnv;
   nicknames?: string[];
+  /** 하위 단계(모델 호출, 도우미 호출)마다 이름과 걸린 시간(ms)을 받는다. */
+  onStep?: (name: string, ms: number) => void;
 };
 
 let client: Anthropic | null = null;
@@ -50,9 +52,12 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
   let used = 0;
   let calls = 0;
   let res: ModelResponse;
+  const step = deps.onStep ?? (() => {});
   for (;;) {
+    const t0 = Date.now();
     res = await create({ ...base, messages });
     calls++;
+    step(`model${calls}`, Date.now() - t0);
     if (res.stop_reason !== "tool_use" || calls >= MAX_MODEL_CALLS) break;
     const results: ToolResult[] = [];
     for (const block of res.content) {
@@ -62,8 +67,12 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
       let content: string;
       if (check.ok) {
         used++;
-        content = (await ask(check.question, { env })) ?? "(도우미가 답하지 못했다)";
+        const t1 = Date.now();
+        const got = await ask(check.question, { env });
+        step(got === null ? `helper${used}_fail` : `helper${used}`, Date.now() - t1);
+        content = got ?? "(도우미가 답하지 못했다)";
       } else {
+        step(`helper_rejected`, 0);
         content = check.reason;
       }
       results.push({ type: "tool_result", tool_use_id: block.id, content });

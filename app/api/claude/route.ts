@@ -9,6 +9,7 @@ import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig } from "@/lib/claude/personas";
 import { MAIN_ROOM_ID, pickTarget, resolveRoom } from "@/lib/claude/rooms";
 import { sleep } from "@/lib/claude/sleep";
+import { createTiming } from "@/lib/claude/timing";
 
 /** 러너 두 번(최대 90초)에 모델·Jev 호출이 더해진다. */
 export const maxDuration = 120;
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
   if (!room) return fail("bad_request", 400);
   const id = messageId;
 
+  const timing = createTiming();
   try {
     const db = getAdminDb();
     const messages = db.collection(room.messagesPath);
@@ -61,6 +63,9 @@ export async function POST(req: Request) {
       return true;
     });
     if (!created) return fail("duplicate", 409);
+    timing.note("room", room.kind);
+    timing.note("lag", now - q.createdAt.toMillis());
+    timing.lap("accept");
 
     const reply = (text: string) =>
       messages.add({
@@ -82,11 +87,15 @@ export async function POST(req: Request) {
         const newer = await messages.where("createdAt", ">", q.createdAt).orderBy("createdAt").limit(50).get();
         if (newer.docs.some((d) => d.data().uid === room.ownerUid)) {
           await markJob("skipped");
+          timing.lap("settle");
+          timing.note("result", "skipped");
           return Response.json({ skipped: true });
         }
+        timing.lap("settle");
       }
 
       const quota = await consumeClaudeQuota(q.uid, now);
+      timing.lap("quota");
       if (quota !== "ok") {
         await reply(quota === "user" ? persona.replyText.userLimited : persona.replyText.dailyLimited);
         await markJob("done");
@@ -98,6 +107,7 @@ export async function POST(req: Request) {
         const x = d.data();
         return { id: d.id, uid: x.uid, nickname: x.nickname, text: x.text };
       });
+      timing.lap("history");
 
       const useMemory = persona.useMemory !== false;
       let memories: Memory[] = [];
@@ -106,13 +116,19 @@ export async function POST(req: Request) {
           memories = await recallMemories(db, room, q.nickname, target.question);
         } catch (e) {
           console.error("recall failed", errName(e));
+          timing.note("recall_error", errName(e));
         }
+        timing.lap("recall");
+        timing.note("recalled", memories.length);
       }
 
       let text: string;
       try {
-        text = await answer({ room, persona, history, memories });
+        text = await answer({ room, persona, history, memories }, { onStep: (n, ms) => timing.note(n, ms) });
+        timing.lap("answer");
       } catch (e) {
+        timing.lap("answer");
+        timing.note("result", "answer_failed");
         console.error("answer failed", ...describeError(e));
         await reply(persona.replyText.failed);
         await markJob("failed");
@@ -120,18 +136,26 @@ export async function POST(req: Request) {
       }
       await reply(text);
       await markJob("done");
+      timing.lap("reply");
 
       if (useMemory) {
         try {
-          await rememberSince(db, room, q.createdAt);
+          const r = await rememberSince(db, room, q.createdAt);
+          timing.note("judged", r.judged);
+          timing.note("saved", r.saved);
         } catch (e) {
           console.error("remember failed", errName(e));
+          timing.note("remember_error", errName(e));
         }
+        timing.lap("remember");
       }
+      timing.note("result", "ok");
       return Response.json({ ok: true });
     } catch (e) {
       await markJob("failed");
       throw e;
+    } finally {
+      console.log("claude timing", timing.line());
     }
   } catch (e) {
     console.error("claude route failed", errName(e));
