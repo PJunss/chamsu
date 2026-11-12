@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/components/chat/useMessages";
 import type { OnlineUser } from "@/lib/presence";
 import { isNearBottom } from "@/lib/scroll";
-import { BOT_NICKNAME, BOT_UID } from "@/lib/claude/constants";
+import { PERSONAS, findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
 
 export type ChatViewProps = {
   me: string;
@@ -74,10 +74,10 @@ export function MessageList({
       <ul className="flex flex-col gap-2">
         {messages.map((m) => {
           const mine = m.uid === me;
-          const bot = m.uid === BOT_UID;
+          const bot = findPersonaByUid(m.uid);
           return (
             <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} gap-2`}>
-              {bot && <BotAvatar />}
+              {bot && <BotAvatar persona={bot} />}
               <div className={`flex min-w-0 flex-col ${mine ? "items-end" : "items-start"}`}>
               {!mine && (
                 <span className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
@@ -102,8 +102,8 @@ export function MessageList({
         })}
         {claudeTyping && (
           <li className="flex items-center gap-2">
-            <BotAvatar />
-            <span className="animate-pulse text-xs text-zinc-400">{BOT_NICKNAME}가 입력 중…</span>
+            <BotAvatar persona={PERSONAS[0]} />
+            <span className="animate-pulse text-xs text-zinc-400">{PERSONAS[0].nickname}가 입력 중…</span>
           </li>
         )}
       </ul>
@@ -111,12 +111,12 @@ export function MessageList({
   );
 }
 
-function BotAvatar() {
+function BotAvatar({ persona }: { persona: PersonaInfo }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/bianca.jpeg"
-      alt={BOT_NICKNAME}
+      src={persona.avatar}
+      alt={persona.nickname}
       width={36}
       height={36}
       className="h-9 w-9 shrink-0 rounded-full object-cover"

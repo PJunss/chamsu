@@ -1,6 +1,9 @@
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { DAILY_MAX, USER_MAX, USER_WINDOW_MS } from "@/lib/claude/constants";
 import { nextRateState, type RateState } from "@/lib/rateLimit";
+
+const USER_WINDOW_MS = 60_000;
+const USER_MAX = 5;
+const DAILY_MAX = 200;
 
 export function kstDayKey(nowMs: number): string {
   const d = new Date(nowMs + 9 * 3600_000);

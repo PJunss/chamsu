@@ -92,7 +92,9 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const askClaude = vi.fn<(m: { role: string; content: string }[]) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
-vi.mock("@/lib/claude/client", () => ({ askClaude: (m: { role: string; content: string }[]) => askClaude(m) }));
+vi.mock("@/lib/claude/client", () => ({
+  askClaude: (_system: string, m: { role: string; content: string }[]) => askClaude(m),
+}));
 vi.mock("@/lib/claude/limits", () => ({
   consumeClaudeQuota: (uid: string, now: number) => consumeClaudeQuota(uid, now),
 }));

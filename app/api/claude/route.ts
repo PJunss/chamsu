@@ -2,11 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { FieldValue, type Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { askClaude } from "@/lib/claude/client";
-import { BOT_NICKNAME, BOT_UID, CONTEXT_SIZE, QUESTION_TTL_MS } from "@/lib/claude/constants";
+import { CONTEXT_SIZE, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import { buildClaudeMessages, type CtxMessage } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { REPLY_TEXT } from "@/lib/claude/reply";
-import { parseClaudeQuestion } from "@/lib/claude/trigger";
+import { getPersonaConfig } from "@/lib/claude/personas";
+import { findPersonaByTrigger, isBotUid } from "@/lib/claude/personas/info";
 
 const fail = (error: string, status: number) => Response.json({ error }, { status });
 
@@ -32,8 +33,11 @@ export async function POST(req: Request) {
     const snap = await db.collection("messages").doc(id).get();
     if (!snap.exists) return fail("not_found", 404);
     const q = snap.data() as { text: string; uid: string; nickname: string; createdAt: Timestamp };
-    if (typeof q.text !== "string" || parseClaudeQuestion(q.text) === null) return fail("bad_request", 400);
-    if (q.uid === BOT_UID) return fail("bad_request", 400);
+    const target = typeof q.text === "string" ? findPersonaByTrigger(q.text) : null;
+    if (!target) return fail("bad_request", 400);
+    if (isBotUid(q.uid)) return fail("bad_request", 400);
+    const persona = getPersonaConfig(target.persona.id);
+    if (!persona) return fail("bad_request", 400);
     const now = Date.now();
     if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);
 
@@ -48,8 +52,8 @@ export async function POST(req: Request) {
     const reply = (text: string) =>
       db.collection("messages").add({
         text,
-        nickname: BOT_NICKNAME,
-        uid: BOT_UID,
+        nickname: persona.info.nickname,
+        uid: persona.info.uid,
         createdAt: FieldValue.serverTimestamp(),
         replyTo: id,
       });
@@ -80,7 +84,7 @@ export async function POST(req: Request) {
 
       let answer: string;
       try {
-        answer = await askClaude(buildClaudeMessages(history));
+        answer = await askClaude(persona.character, buildClaudeMessages(history));
       } catch (e) {
         console.error("claude failed", ...describeError(e));
         await reply(REPLY_TEXT.failed);
