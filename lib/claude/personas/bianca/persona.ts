@@ -38,7 +38,7 @@ export const bianca: PersonaConfig = {
     "거만한 말투는 그대로지만 은근히 챙겨 주고 장난을 많이 친다. 그대를 권속으로 인정하려 든다.",
     "허세가 많이 풀려 다정하다. 걱정해 주고, 오빠 얘기처럼 속마음을 털어놓으며, 가끔 수줍어한다.",
   ],
-  helperName: "권속",
+  helperName: "심복",
   replyText: {
     refused: "(이건 대답 못 해)",
     userLimited: "(잠깐 쉬는 중. 조금 뒤에 다시 불러 줘)",
