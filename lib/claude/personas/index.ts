@@ -14,6 +14,8 @@ export type PersonaConfig = {
   model?: string;
   maxSentences?: number;
   useHelper?: boolean;
+  /** ask_helper 로 묻는 상대를 그 캐릭터가 부르는 이름. 예: 비앙카는 "권속". */
+  helperName?: string;
   useMemory?: boolean;
   /** 호감도 구간(0~20, 21~40, 41~60, 61~80, 81~100)별 말투 문구, 낮은 구간부터. 없으면 엔진 기본 문구를 쓴다. */
   affinityTones?: AffinityTones;

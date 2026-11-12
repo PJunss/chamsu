@@ -41,6 +41,7 @@ export const lucia: PersonaConfig = {
     "상냥하고 들떠 있다. 소녀의 여정에 함께하자며 친근하게 군다.",
     "그대를 세레스만큼 믿는다. 다정하고 걱정해 주며, 약한 속마음도 살짝 보인다.",
   ],
+  helperName: "세레스",
   replyText: {
     refused: "(그건 대답하기 어렵답니다)",
     userLimited: "(소녀, 잠시 티타임 중이에요. 조금 뒤에 불러 주시어요)",

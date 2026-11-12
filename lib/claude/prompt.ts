@@ -59,8 +59,13 @@ export function buildSystemPrompt(
       "웹 검색, 오늘 날씨·환율·뉴스처럼 최신 정보, 확실히 모르는 사실이 필요할 때만 ask_helper 를 쓴다.",
       "잡담, 계산, 기억으로 답할 수 있는 질문에는 ask_helper 를 쓰지 않는다.",
       "ask_helper 질문에는 친구 이름, 대화 원문, 기억을 넣지 않는다. 그 문장만 읽어도 뜻이 통하는 짧은 질문 하나로 쓴다.",
-      "도우미 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.",
+      "ask_helper 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.",
     );
+    if (persona.helperName) {
+      rules.push(
+        `ask_helper 로 묻는 상대는 너의 "${persona.helperName}"이다. 알아본 것을 말할 때 누구에게 들었는지 밝히려면 "${persona.helperName}"이라고 부르고, "도우미", "러너", "도구", "검색" 같은 말은 쓰지 않는다.`,
+      );
+    }
   }
   if (opts.affinity) {
     const { nickname, score } = opts.affinity;
