@@ -1,4 +1,4 @@
-import { PERSONAS, findPersonaById, findPersonaByTrigger, isBotUid, type PersonaInfo } from "@/lib/claude/personas/info";
+import { PERSONAS, findMentions, findPersonaById, isBotUid, type PersonaInfo } from "@/lib/claude/personas/info";
 
 /** 봇이 답하는 방. 엔진은 kind 를 직접 보지 않고 이 값의 경로·문구만 쓴다. 브라우저도 import 한다. */
 export type Room = {
@@ -58,8 +58,8 @@ export function pickTarget(
 ): { persona: PersonaInfo; question: string } | null {
   if (isBotUid(message.uid, list)) return null;
   if (room.kind === "group") {
-    const found = findPersonaByTrigger(message.text, list);
-    return found && room.personaIds.includes(found.persona.id) ? found : null;
+    const persona = findMentions(message.text, list).find((p) => room.personaIds.includes(p.id));
+    return persona ? { persona, question: message.text.trim() } : null;
   }
   if (message.uid !== room.ownerUid) return null;
   const question = message.text.trim();

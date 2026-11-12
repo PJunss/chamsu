@@ -135,7 +135,7 @@ describe("POST /api/claude 단체방", () => {
     expect(db).toBe(fake.db);
     expect(room.id).toBe("main");
     expect(asker).toBe("철수");
-    expect(question).toBe("안녕");
+    expect(question).toBe("@비앙카 안녕");
     const input = answer.mock.calls[0][0];
     expect(input.room.id).toBe("main");
     expect(input.persona.info.id).toBe("bianca");

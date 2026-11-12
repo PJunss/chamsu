@@ -10,7 +10,7 @@ import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
 import { ChatMobile } from "@/components/chat/mobile/ChatMobile";
 import type { ChatViewProps } from "@/components/chat/MessageList";
-import { findPersonaById, findPersonaByTrigger } from "@/lib/claude/personas/info";
+import { findMentions, findPersonaById } from "@/lib/claude/personas/info";
 import { buildRoomItems } from "@/lib/claude/roomList";
 import { MAIN_ROOM_ID, resolveRoom } from "@/lib/claude/rooms";
 
@@ -62,11 +62,11 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
           text, nickname, uid, createdAt: serverTimestamp(),
         });
         setClaudeFailed(null);
-        const callee = room.kind === "dm" ? dmPersona : (findPersonaByTrigger(text)?.persona ?? null);
-        if (callee) {
+        const callees = room.kind === "dm" ? (dmPersona ? [dmPersona] : []) : findMentions(text);
+        if (callees.length > 0) {
           const sentRoom = room.id;
           void callClaude(sentRoom, ref.id).then((ok) => {
-            if (!ok && currentRoom.current === sentRoom) setClaudeFailed(callee.nickname);
+            if (!ok && currentRoom.current === sentRoom) setClaudeFailed(callees.map((p) => p.nickname).join(", "));
           });
         }
         return true;

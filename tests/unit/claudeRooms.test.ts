@@ -54,7 +54,7 @@ test("잘못된 방 id 는 null", () => {
 
 test("단체방은 부르는 말로 페르소나를 찾는다", () => {
   const room = resolveRoom("main", fake)!;
-  expect(pickTarget(room, { uid: UID, text: "@쿠로 안녕" }, fake)).toEqual({ persona: fake[1], question: "안녕" });
+  expect(pickTarget(room, { uid: UID, text: "@쿠로 안녕" }, fake)).toEqual({ persona: fake[1], question: "@쿠로 안녕" });
   expect(pickTarget(room, { uid: UID, text: "그냥 말" }, fake)).toBeNull();
   expect(pickTarget(room, { uid: "bot_kuro", text: "@비앙카 안녕" }, fake)).toBeNull();
 });

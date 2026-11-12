@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import {
-  PERSONAS, findPersonaById, findPersonaByTrigger, findPersonaByUid, isBotUid, type PersonaInfo,
+  PERSONAS, findMentions, findPersonaById, findPersonaByUid, isBotUid, type PersonaInfo,
 } from "@/lib/claude/personas/info";
 import { PERSONA_CONFIGS, getPersonaConfig } from "@/lib/claude/personas";
 
@@ -9,30 +9,43 @@ const fake: PersonaInfo[] = [
   { id: "b", uid: "bot_b", nickname: "봇봇", trigger: "@봇봇", avatar: "/b.png" },
 ];
 
-test("부르는 말 뒤 본문을 질문으로 꺼낸다", () => {
-  const r = findPersonaByTrigger("  @비앙카 안녕 ");
-  expect(r?.persona.id).toBe("bianca");
-  expect(r?.question).toBe("안녕");
-});
-test("@비앙카 뒤 본문을 꺼낸다", () => expect(findPersonaByTrigger("@비앙카 오늘 뭐 먹지")?.question).toBe("오늘 뭐 먹지"));
-test("붙여 써도 된다", () => expect(findPersonaByTrigger("@비앙카안녕")?.question).toBe("안녕"));
-test("본문이 없으면 null", () => {
-  expect(findPersonaByTrigger("@비앙카")).toBeNull();
-  expect(findPersonaByTrigger("@비앙카   ")).toBeNull();
-});
-test("중간에 있으면 질문 아님", () => {
-  expect(findPersonaByTrigger("안녕 @비앙카")).toBeNull();
-  expect(findPersonaByTrigger("야 @비앙카 안녕")).toBeNull();
-});
-test("다른 텍스트는 null", () => expect(findPersonaByTrigger("안녕")).toBeNull());
+const ids = (list: PersonaInfo[]) => list.map((p) => p.id);
 
-test("부르는 말이 앞부분을 공유하면 긴 것을 고른다", () => {
-  const b = findPersonaByTrigger("@봇봇 hi", fake);
-  expect(b?.persona.id).toBe("b");
-  expect(b?.question).toBe("hi");
-  const a = findPersonaByTrigger("@봇 hi", fake);
-  expect(a?.persona.id).toBe("a");
-  expect(a?.question).toBe("hi");
+test("맨 앞·중간·끝 어디에 있어도 부른 것이다", () => {
+  expect(ids(findMentions("  @비앙카 안녕 "))).toEqual(["bianca"]);
+  expect(ids(findMentions("@비앙카야 오늘 뭐 먹지"))).toEqual(["bianca"]);
+  expect(ids(findMentions("야 @루치아 안녕"))).toEqual(["lucia"]);
+  expect(ids(findMentions("안녕 @루치아"))).toEqual(["lucia"]);
+});
+
+test("여러 봇은 처음 나온 순서로, 같은 봇은 한 번만 넣는다", () => {
+  expect(ids(findMentions("@루치아 @비앙카 둘 다 안녕"))).toEqual(["lucia", "bianca"]);
+  expect(ids(findMentions("@비앙카 안녕 @루치아 너도"))).toEqual(["bianca", "lucia"]);
+  expect(ids(findMentions("@비앙카 안녕 @비앙카"))).toEqual(["bianca"]);
+});
+
+test("부르는 말이 앞부분을 공유하면 같은 위치에서 긴 것을 고른다", () => {
+  const shared: PersonaInfo[] = [
+    { id: "short", uid: "bot_short", nickname: "비앙", trigger: "@비앙", avatar: "/s.png" },
+    { id: "long", uid: "bot_long", nickname: "비앙카", trigger: "@비앙카", avatar: "/l.png" },
+  ];
+  expect(ids(findMentions("@비앙카 안녕", shared))).toEqual(["long"]);
+  expect(ids(findMentions("@비앙 안녕", shared))).toEqual(["short"]);
+  expect(ids(findMentions("@비앙 그리고 @비앙카 안녕", shared))).toEqual(["short", "long"]);
+  expect(ids(findMentions("@봇봇 hi", fake))).toEqual(["b"]);
+  expect(ids(findMentions("@봇 hi", fake))).toEqual(["a"]);
+});
+
+test("부르는 말만 있으면 빈 배열", () => {
+  expect(findMentions("@비앙카")).toEqual([]);
+  expect(findMentions("  @비앙카   ")).toEqual([]);
+  expect(findMentions("@비앙카 @루치아")).toEqual([]);
+  expect(findMentions("@비앙카@비앙카")).toEqual([]);
+});
+
+test("부르는 말이 없으면 빈 배열", () => {
+  expect(findMentions("안녕")).toEqual([]);
+  expect(findMentions("")).toEqual([]);
 });
 
 test("uid·id 로 찾는다", () => {
