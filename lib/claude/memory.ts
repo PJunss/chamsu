@@ -71,9 +71,10 @@ function compareTimestamps(a: Timestamp, b: Timestamp): number {
   return a.seconds !== b.seconds ? a.seconds - b.seconds : a.nanoseconds - b.nanoseconds;
 }
 
-export type JudgeMessage = { id: string; uid: string; nickname: string; text: string; createdAtMs: number };
+/** guarded 는 Jev 요청 검사에 걸린 사람 메시지다. */
+export type JudgeMessage = { id: string; uid: string; nickname: string; text: string; createdAtMs: number; guarded?: boolean };
 
-/** 봇 메시지를 뺀 판단 대상과, 대상마다 바로 앞 사람 메시지 최대 2개("닉네임: 본문", 오래된 순). */
+/** 봇 메시지와 검사에 걸린 메시지를 뺀 판단 대상과, 대상마다 바로 앞 사람 메시지 최대 2개("닉네임: 본문", 오래된 순). */
 export function judgeRange(
   messages: JudgeMessage[],
   isBot: (uid: string) => boolean,
@@ -81,7 +82,7 @@ export function judgeRange(
   const targets: JudgeMessage[] = [];
   const context = new Map<string, string[]>();
   for (const m of messages) {
-    if (isBot(m.uid)) continue;
+    if (isBot(m.uid) || m.guarded === true) continue;
     context.set(m.id, targets.slice(-2).map((p) => `${p.nickname}: ${p.text}`));
     targets.push(m);
   }
@@ -125,6 +126,7 @@ export async function rememberSince(
       nickname: x.nickname,
       text: x.text,
       createdAtMs: (x.createdAt as Timestamp).toMillis(),
+      guarded: x.guarded === true,
     };
   });
   const stamps = new Map(docs.map((d) => [d.id, d.data().createdAt as Timestamp]));

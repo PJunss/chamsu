@@ -3,7 +3,7 @@ import { FieldValue, type Timestamp } from "firebase-admin/firestore";
 import { after } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { answer } from "@/lib/claude/answer";
-import { CHAIN_HEADER, chainToken, isChainRequest } from "@/lib/claude/chainToken";
+import { CHAIN_HEADER, chainOrigin, chainToken, isChainRequest } from "@/lib/claude/chainToken";
 import { CONTEXT_SIZE, DM_SETTLE_MS, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
@@ -235,12 +235,23 @@ export async function POST(req: Request) {
     const finish = async (): Promise<Response> => {
       /** 사람 메시지만 요청 하나에 한 번 검사하고, 부른 봇 모두가 같은 결과를 쓴다. */
       const guardP: Promise<GuardResult> = isBotUid(q.uid) ? Promise.resolve(null) : guardScore(q.nickname, question);
+      /** 걸린 메시지에는 guarded 를 남겨 기억 판정에서 빠지게 한다. 실패해도 답에는 영향이 없다. */
+      const guardMarked = guardP.then(async (g) => {
+        if (!isGuarded(g)) return;
+        try {
+          await messages.doc(id).update({ guarded: true });
+        } catch (e) {
+          console.error("claude guarded mark failed", errName(e));
+        }
+      });
       let results: BotResult[];
       try {
         results = await Promise.all(jobs.map((j) => runBot(j, guardP)));
       } finally {
         logTimings();
       }
+
+      await guardMarked;
 
       /** 기억 저장은 요청 하나에서 모든 봇의 답을 쓴 뒤 한 번만 돈다. */
       if (jobs.some((j, i) => results[i] === "ok" && j.persona.useMemory !== false)) {
@@ -257,8 +268,13 @@ export async function POST(req: Request) {
         .filter((a) => pickTargets(room, { uid: a.uid, text: a.text, chainDepth, chainRootUid }, PERSONAS, { internal: true }))
         .map((a) => a.id);
       if (next.length > 0) {
-        const url = new URL("/api/claude", req.url);
-        after(() => chainNext(url, room.id, next));
+        const origin = chainOrigin(process.env, req.url);
+        if (origin) {
+          const url = new URL("/api/claude", origin);
+          after(() => chainNext(url, room.id, next));
+        } else {
+          console.log("claude chain skipped", "reason=no_origin");
+        }
       }
 
       const outcome = decideOutcome(results);

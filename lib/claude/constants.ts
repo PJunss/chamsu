@@ -17,6 +17,8 @@ export const JUDGE_BATCH = 300;
 export const JUDGE_THRESHOLD = 0.6;
 /** Jev 요청 검사 점수가 이 값 이상이면 응하면 안 되는 요청으로 본다. */
 export const GUARD_THRESHOLD = 0.6;
+/** Jev 요청 검사를 기다리는 최대 시간. 넘으면 걸리지 않은 것으로 진행한다. */
+export const GUARD_TIMEOUT_MS = 3_000;
 export const DM_SETTLE_MS = 1_500;
 /** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
 export const BOT_CHAIN_MAX = 3;

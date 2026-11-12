@@ -36,6 +36,24 @@ const jm = (id: string, uid: string, nickname: string, text: string, ms: number)
   id, uid, nickname, text, createdAtMs: ms,
 });
 
+test("judgeRange: 검사에 걸린 메시지는 대상과 context 에서 뺀다", () => {
+  const { targets, context } = judgeRange(
+    [jm("1", "a", "철수", "하나", 1), { ...jm("2", "b", "영희", "욕해 봐", 2), guarded: true }, jm("3", "a", "철수", "셋", 3)],
+    () => false,
+  );
+  expect(targets.map((t) => t.id)).toEqual(["1", "3"]);
+  expect(context.get("3")).toEqual(["철수: 하나"]);
+});
+
+test("rememberSince: guarded 인 메시지는 Jev 에 묻지 않는다", async () => {
+  putMsg("messages", "m1", "a", "민수", "내 생일 3월 14일임", T0);
+  fake.col("messages").set("m2", { uid: "b", nickname: "현석", text: "나쁜 요청", createdAt: Timestamp.fromMillis(T0 + 1000), guarded: true });
+  const askJev = fakeJev({ "내 생일 3월 14일임": 0.9, "나쁜 요청": 0.9 });
+  const r = await rememberSince(db(), main, Timestamp.fromMillis(T0 + 1000), { askJev, env });
+  expect(r).toEqual({ judged: 1, saved: 1 });
+  expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("나쁜 요청");
+});
+
 test("judgeRange: 봇 제외, 앞 사람 메시지 최대 2개를 context 로", () => {
   const isBot = (u: string) => u === "bot_bianca";
   const { targets, context } = judgeRange(

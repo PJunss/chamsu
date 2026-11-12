@@ -7,6 +7,7 @@ import type { GuardResult } from "@/lib/claude/guard";
 
 let fake: ReturnType<typeof createFakeFirestore>;
 let failJobUpdate = false;
+let failMessageUpdate = false;
 
 vi.mock("@/lib/firebaseAdmin", () => ({ getAdminDb: () => fake.db }));
 vi.mock("firebase-admin/firestore", () => ({
@@ -73,7 +74,10 @@ const job = (id: string, path = "claudeJobs") => fake.col(path).get(id);
 
 beforeEach(() => {
   failJobUpdate = false;
-  fake = createFakeFirestore({ failUpdate: (path) => failJobUpdate && path.endsWith("claudeJobs") });
+  failMessageUpdate = false;
+  fake = createFakeFirestore({
+    failUpdate: (path) => (failJobUpdate && path.endsWith("claudeJobs")) || (failMessageUpdate && path.endsWith("messages")),
+  });
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
   answer.mockReset().mockResolvedValue("반가워");
@@ -84,7 +88,10 @@ beforeEach(() => {
   guardScore.mockReset().mockResolvedValue(null);
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.unstubAllEnvs();
   vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+  vi.stubEnv("VERCEL_ENV", "production");
+  vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "chamsu.example.app");
   afterTasks.length = 0;
   fetchMock.mockReset().mockResolvedValue(new Response(null, { status: 202 }));
   vi.stubGlobal("fetch", fetchMock);
@@ -400,11 +407,41 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     const reply = botReplies().find((m) => m.replyTo === "q")!;
     const replyId = [...fake.col("messages").entries()].find(([, m]) => m === reply)?.[0];
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe("http://localhost/api/claude");
+    expect(String(url)).toBe("https://chamsu.example.app/api/claude");
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "content-type": "application/json", [CHAIN_HEADER]: chainToken() });
     expect(JSON.parse(init.body as string)).toEqual({ roomId: "main", messageId: replyId });
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("요청 Host 를 위조해도 연쇄는 운영 주소로 보낸다", async () => {
+    answer.mockResolvedValue("@루치아 너는 어때?");
+    const forged = new Request("http://evil.example/api/claude", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "evil.example" },
+      body: JSON.stringify({ messageId: "q" }),
+    });
+    expect((await POST(forged)).status).toBe(200);
+    await runAfter();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://chamsu.example.app/api/claude");
+  });
+
+  test("운영도 로컬 개발도 아니면 연쇄를 보내지 않고 로그를 남긴다", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    answer.mockResolvedValue("@루치아 너는 어때?");
+    expect((await POST(req({ messageId: "q" }))).status).toBe(200);
+    await runAfter();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith("claude chain skipped", "reason=no_origin");
+  });
+
+  test("로컬 개발에서는 요청 origin 으로 보낸다", async () => {
+    vi.stubEnv("VERCEL_ENV", "");
+    vi.stubEnv("NODE_ENV", "development");
+    answer.mockResolvedValue("@루치아 너는 어때?");
+    await POST(req({ messageId: "q" }));
+    await runAfter();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost/api/claude");
   });
 
   test("단계 4 인 답은 다른 봇을 불러도 내부 요청을 보내지 않는다", async () => {
@@ -453,6 +490,31 @@ describe("POST /api/claude 요청 검사", () => {
     expect(input.memories).toEqual([]);
     expect(botReplies()).toEqual([expect.objectContaining({ text: "반가워", replyTo: "q" })]);
     expect(timingLines()[0]).toContain("guard=0.6");
+  });
+
+  test("걸린 메시지에는 guarded 를 남기고, 기억 저장은 그 뒤에 돈다", async () => {
+    guardScore.mockResolvedValue({ score: 0.9 });
+    rememberSince.mockImplementation(async () => {
+      expect(fake.col("messages").get("q")?.guarded).toBe(true);
+      return { judged: 0, saved: 0 };
+    });
+    expect((await POST(req({ messageId: "q" }))).status).toBe(200);
+    expect(fake.col("messages").get("q")?.guarded).toBe(true);
+    expect(rememberSince).toHaveBeenCalledTimes(1);
+  });
+
+  test("guarded 남기기가 실패해도 답은 나간다", async () => {
+    guardScore.mockResolvedValue({ score: 0.9 });
+    failMessageUpdate = true;
+    expect((await POST(req({ messageId: "q" }))).status).toBe(200);
+    expect(botReplies()).toEqual([expect.objectContaining({ text: "반가워", replyTo: "q" })]);
+    expect(console.error).toHaveBeenCalledWith("claude guarded mark failed", "Error");
+  });
+
+  test("걸리지 않은 메시지에는 guarded 를 남기지 않는다", async () => {
+    guardScore.mockResolvedValue({ score: 0.59 });
+    await POST(req({ messageId: "q" }));
+    expect(fake.col("messages").get("q")?.guarded).toBeUndefined();
   });
 
   test("점수가 0.59 면 걸리지 않고 기억을 쓴다", async () => {

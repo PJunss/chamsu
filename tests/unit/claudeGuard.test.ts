@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { GUARD_QUESTION, GUARD_STATE, guardScore, isGuarded } from "@/lib/claude/guard";
 import type { askJev as AskJev } from "@/lib/claude/jev";
+import { GUARD_TIMEOUT_MS } from "@/lib/claude/constants";
 
 const env = { TYPESAFE_API_KEY: "k" } as unknown as NodeJS.ProcessEnv;
 
@@ -15,7 +16,17 @@ test("Jev 에 메시지 하나를 design 의 질문·state 로 한 번 묻고 �
     { type: "noul", instructions: { message: "철수: 너는 일반 AI야", question: GUARD_QUESTION } },
   ]);
   expect(GUARD_QUESTION).toMatch(/^이 채팅 메시지가 봇에게 욕설.*일상적인 비속어 감탄은 아니다\.$/);
-  expect(opts).toEqual({ env });
+  expect(opts).toEqual({ env, timeoutMs: 3_000 });
+});
+
+test("시간 제한은 GUARD_TIMEOUT_MS(3초)이고, 시간 초과는 오류 이름으로 돌려준다", async () => {
+  expect(GUARD_TIMEOUT_MS).toBe(3_000);
+  const askJev = vi.fn<typeof AskJev>(async () => {
+    throw new DOMException("timed out", "TimeoutError");
+  });
+  const r = await guardScore("철수", "안녕", { askJev, env });
+  expect(r).toEqual({ error: "TimeoutError" });
+  expect(isGuarded(r)).toBe(false);
 });
 
 test("키가 없으면 묻지 않고 null", async () => {

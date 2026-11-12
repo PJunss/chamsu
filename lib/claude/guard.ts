@@ -1,4 +1,4 @@
-import { GUARD_THRESHOLD } from "@/lib/claude/constants";
+import { GUARD_THRESHOLD, GUARD_TIMEOUT_MS } from "@/lib/claude/constants";
 import { askJev, jevConfigured } from "@/lib/claude/jev";
 
 export const GUARD_STATE = "채팅방에서 사람이 캐릭터 봇에게 보낸 한국어 메시지를 하나씩 평가한다.";
@@ -10,7 +10,7 @@ export type GuardResult = { score: number } | { error: string } | null;
 
 type Deps = { askJev?: typeof askJev; env?: NodeJS.ProcessEnv };
 
-/** 사람이 보낸 메시지 하나를 Jev 로 한 번 검사한다. throw 하지 않는다. */
+/** 사람이 보낸 메시지 하나를 Jev 로 한 번 검사한다. GUARD_TIMEOUT_MS 를 넘기면 오류로 돌려준다. throw 하지 않는다. */
 export async function guardScore(nickname: string, text: string, deps: Deps = {}): Promise<GuardResult> {
   const env = deps.env ?? process.env;
   if (!jevConfigured(env)) return null;
@@ -18,7 +18,7 @@ export async function guardScore(nickname: string, text: string, deps: Deps = {}
     const scores = await (deps.askJev ?? askJev)(
       GUARD_STATE,
       { g: { type: "noul", instructions: { message: `${nickname}: ${text}`, question: GUARD_QUESTION } } },
-      { env },
+      { env, timeoutMs: GUARD_TIMEOUT_MS },
     );
     return { score: scores.g };
   } catch (e) {
