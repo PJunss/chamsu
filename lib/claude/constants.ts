@@ -1,8 +1,11 @@
 export const DEFAULT_MODEL = "claude-haiku-5-5";
 export const CONTEXT_SIZE = 30;
 export const QUESTION_TTL_MS = 120_000;
-export const MAX_REPLY_CHARS = 500;
+export const MAX_REPLY_CHARS = 800;
+/** 잡담·인사·짧은 반응의 최대 문장 수. */
 export const DEFAULT_MAX_SENTENCES = 3;
+/** 설명·추천·정보 질문의 최대 문장 수. 서버는 이 수를 넘는 문장을 자른다. */
+export const DEFAULT_MAX_LONG_SENTENCES = 6;
 export const MAX_MODEL_CALLS = 3;
 export const HELPER_MAX_CALLS = 2;
 export const HELPER_TIMEOUT_MS = 45_000;

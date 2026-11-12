@@ -151,9 +151,9 @@ test("한 답에 도우미는 두 번까지, 세 번째 요청은 거절 문구"
   ]);
 });
 
-test("5문장 답은 3문장으로 자른다", async () => {
-  const { create } = fakeCreate(text("하나. 둘. 셋. 넷. 다섯."));
-  expect(await answer({ room, persona, history, memories: [] }, { create, env: noRunner, nicknames: [] })).toBe("하나. 둘. 셋.");
+test("8문장 답은 설명 상한 6문장으로 자른다", async () => {
+  const { create } = fakeCreate(text("하나. 둘. 셋. 넷. 다섯. 여섯. 일곱. 여덟."));
+  expect(await answer({ room, persona, history, memories: [] }, { create, env: noRunner, nicknames: [] })).toBe("하나. 둘. 셋. 넷. 다섯. 여섯.");
 });
 
 test("모델 오류는 그대로 throw", async () => {

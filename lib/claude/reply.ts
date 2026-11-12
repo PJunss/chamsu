@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_SENTENCES, MAX_REPLY_CHARS } from "@/lib/claude/constants";
+import { DEFAULT_MAX_LONG_SENTENCES, DEFAULT_MAX_SENTENCES, MAX_REPLY_CHARS } from "@/lib/claude/constants";
 import type { PersonaConfig } from "@/lib/claude/personas";
 
 /** 문장 끝(. ! ? … ~ 뒤 공백) 또는 줄바꿈으로 나눠 max 문장을 넘으면 앞 max 문장만 공백으로 잇는다. */
@@ -18,7 +18,8 @@ export function toReplyText(
     .map((b) => (b.text as string).trim())
     .filter((t) => t.length > 0)
     .join(" ");
-  const text = limitSentences(joined, persona.maxSentences ?? DEFAULT_MAX_SENTENCES);
+  const max = Math.max(persona.maxSentences ?? DEFAULT_MAX_SENTENCES, persona.maxLongSentences ?? DEFAULT_MAX_LONG_SENTENCES);
+  const text = limitSentences(joined, max);
   if (!text) return persona.replyText.empty;
   return Array.from(text).slice(0, MAX_REPLY_CHARS).join("");
 }

@@ -13,6 +13,8 @@ export type PersonaConfig = {
   replyText: ReplyText;
   model?: string;
   maxSentences?: number;
+  /** 설명·추천·정보 질문에 쓸 수 있는 최대 문장 수. 없으면 DEFAULT_MAX_LONG_SENTENCES. */
+  maxLongSentences?: number;
   useHelper?: boolean;
   /** ask_helper 로 묻는 상대를 그 캐릭터가 부르는 이름. 예: 비앙카는 "권속". */
   helperName?: string;

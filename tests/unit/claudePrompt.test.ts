@@ -34,7 +34,7 @@ test("방 소개, 캐릭터, 공통 규칙을 순서대로 잇는다", () => {
   expect(char).toBeGreaterThan(desc);
   expect(rules).toBeGreaterThan(char);
   expect(p).toContain('너의 이름은 "비앙카"이다.');
-  expect(p).toContain("1~3문장");
+  expect(p).toContain("1~3문장으로 짧게 한다. 설명, 추천, 방법, 정보를 묻는 질문은 필요한 만큼 길게 쓰되 6문장을 넘지 않는다.");
   expect(p).toContain('"비앙카:"');
   expect(p).toContain("[기억]");
   expect(p).toContain("기억은 원래 알던 것처럼 자연스럽게 말한다.");

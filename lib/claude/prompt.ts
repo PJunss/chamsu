@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
+import { DEFAULT_MAX_LONG_SENTENCES, DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
 import { affinityBand } from "@/lib/claude/affinity";
 import type { AffinityTones, PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
@@ -27,12 +27,13 @@ export function buildSystemPrompt(
 ): string {
   const name = persona.info.nickname;
   const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
+  const long = Math.max(max, persona.maxLongSentences ?? DEFAULT_MAX_LONG_SENTENCES);
   const intro = [
     room.description,
     `대화 기록의 사용자 메시지는 "닉네임: 내용" 형식이고, 마지막 메시지에 답한다. 너의 이름은 "${name}"이다.`,
   ].join("\n");
   const rules = [
-    `답은 1~${max}문장으로 짧게 한다. 목록이나 마크다운 기호는 쓰지 않는다.`,
+    `잡담, 인사, 짧은 반응은 1~${max}문장으로 짧게 한다. 설명, 추천, 방법, 정보를 묻는 질문은 필요한 만큼 길게 쓰되 ${long}문장을 넘지 않는다. 목록이나 마크다운 기호는 쓰지 않는다.`,
     `답 앞에 "${name}:" 같은 이름표를 붙이지 않는다.`,
     "모르는 건 모른다고 한다. 지어내지 않는다.",
     "답은 캐릭터가 채팅에 보내는 대사만 쓴다. 상황 판단, 말투를 고른 이유, 상대를 대하는 태도 설명, 도구를 쓸지 말지 같은 생각이나 계획은 한 글자도 쓰지 않는다.",
