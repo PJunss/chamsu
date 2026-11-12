@@ -1,11 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { FieldValue, type Timestamp } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { askClaude } from "@/lib/claude/client";
+import { answer as writeAnswer } from "@/lib/claude/answer";
 import { CONTEXT_SIZE, QUESTION_TTL_MS } from "@/lib/claude/constants";
-import { buildClaudeMessages, type CtxMessage } from "@/lib/claude/context";
+import type { CtxMessage } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
-import { buildSystemPrompt } from "@/lib/claude/prompt";
 import { resolveRoom } from "@/lib/claude/rooms";
 import { getPersonaConfig } from "@/lib/claude/personas";
 import { findPersonaByTrigger, isBotUid } from "@/lib/claude/personas/info";
@@ -85,7 +84,7 @@ export async function POST(req: Request) {
 
       let answer: string;
       try {
-        answer = await askClaude(persona, buildSystemPrompt(resolveRoom("main")!, persona), buildClaudeMessages(history, persona.info.uid));
+        answer = await writeAnswer({ room: resolveRoom("main")!, persona, history, memories: [] });
       } catch (e) {
         console.error("claude failed", ...describeError(e));
         await reply(persona.replyText.failed);

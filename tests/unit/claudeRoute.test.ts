@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { CtxMessage } from "@/lib/claude/context";
 
 type Ts = { toMillis: () => number };
 type Data = Record<string, unknown>;
@@ -92,9 +93,13 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const askClaude = vi.fn<(m: { role: string; content: string }[]) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
-vi.mock("@/lib/claude/client", () => ({
-  askClaude: (_persona: unknown, _system: string, m: { role: string; content: string }[]) => askClaude(m),
-}));
+vi.mock("@/lib/claude/answer", async () => {
+  const { buildClaudeMessages } = await import("@/lib/claude/context");
+  return {
+    answer: (input: { history: CtxMessage[]; persona: { info: { uid: string } } }) =>
+      askClaude(buildClaudeMessages(input.history, input.persona.info.uid)),
+  };
+});
 vi.mock("@/lib/claude/limits", () => ({
   consumeClaudeQuota: (uid: string, now: number) => consumeClaudeQuota(uid, now),
 }));
