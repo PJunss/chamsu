@@ -55,6 +55,9 @@ export function createFakeFirestore(opts: { failUpdate?: (path: string, id: stri
         if (!cur) throw new Error("not found");
         col(path).set(id, { ...cur, ...patch });
       },
+      delete: async () => {
+        col(path).delete(id);
+      },
     };
   }
   type Ref = ReturnType<typeof docRef>;
@@ -88,7 +91,7 @@ export function createFakeFirestore(opts: { failUpdate?: (path: string, id: stri
       },
       async get() {
         reads.push(path);
-        let docs = [...col(path).entries()].map(([id, data]) => ({ id, data: () => data, exists: true }));
+        let docs = [...col(path).entries()].map(([id, data]) => ({ id, data: () => data, exists: true, ref: docRef(path, id) }));
         for (const [f, op, v] of filters) {
           docs = docs.filter((d) => {
             const c = compare(d.data()[f], v);
@@ -121,6 +124,19 @@ export function createFakeFirestore(opts: { failUpdate?: (path: string, id: stri
       limit: (n: number) => query(path).limit(n),
       get: () => query(path).get(),
     }),
+    batch: () => {
+      const ops: (() => Promise<void>)[] = [];
+      const b = {
+        delete: (r: Ref) => {
+          ops.push(() => r.delete());
+          return b;
+        },
+        commit: async () => {
+          for (const op of ops) await op();
+        },
+      };
+      return b;
+    },
     runTransaction: async <T>(
       fn: (tx: { get: (r: Ref) => ReturnType<Ref["get"]>; set: (r: Ref, d: Data) => void; update: (r: Ref, d: Data) => void }) => Promise<T>,
     ) => {

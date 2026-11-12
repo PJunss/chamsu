@@ -651,6 +651,86 @@ describe("POST /api/claude 호감도", () => {
   });
 });
 
+describe("POST /api/claude 1:1 방 /clear", () => {
+  const seedRoom = () => {
+    putMessage("old1", OWNER, "현석", "예전 말", NOW - 60_000, DM_MESSAGES);
+    putMessage("old2", "bot_bianca", "비앙카", "예전 답", NOW - 50_000, DM_MESSAGES);
+    fake.col(DM_JOBS).set("old1_bianca", { status: "done" });
+    fake.col("memories").set(`${DM}_old1`, { roomId: DM, text: "예전 말" });
+    fake.col("memoryState").set(DM, { lastJudgedAt: ts(NOW - 50_000) });
+    fake.col("affinity").set(`${DM}_bianca_${OWNER}`, { roomId: DM, personaId: "bianca", uid: OWNER, score: 90, updatedAt: ts(NOW) });
+    fake.col("affinity").set(`main_bianca_${OWNER}`, { roomId: "main", personaId: "bianca", uid: OWNER, score: 70, updatedAt: ts(NOW) });
+  };
+
+  test("주인의 /clear 는 방을 지우고 처음 만난 것처럼 인사 한 줄을 쓴다", async () => {
+    seedRoom();
+    answer.mockResolvedValue("흐흥, 처음 보는 얼굴이로구나.");
+    putMessage("c1", OWNER, "현석", " /clear ", NOW - 1000, DM_MESSAGES);
+    const res = await POST(req({ roomId: DM, messageId: "c1" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cleared: true });
+    expect(sleep).not.toHaveBeenCalled();
+    expect(guardScore).not.toHaveBeenCalled();
+    expect(rememberSince).not.toHaveBeenCalled();
+    expect(fake.col(DM_JOBS).size).toBe(0);
+    expect(fake.col("memories").size).toBe(0);
+    expect(fake.col("memoryState").has(DM)).toBe(false);
+    expect(fake.col("affinity").has(`${DM}_bianca_${OWNER}`)).toBe(false);
+    expect(fake.col("affinity").has(`main_bianca_${OWNER}`)).toBe(true);
+    expect([...fake.col(DM_MESSAGES).values()]).toEqual([
+      {
+        text: "흐흥, 처음 보는 얼굴이로구나.",
+        nickname: "비앙카",
+        uid: "bot_bianca",
+        createdAt: expect.anything(),
+        replyTo: "c1",
+        chainDepth: 1,
+        chainRootUid: OWNER,
+      },
+    ]);
+    const input = answer.mock.calls[0][0];
+    expect(input.greeting).toEqual({ nickname: "현석" });
+    expect(input.affinity).toEqual({ nickname: "현석", score: 50 });
+    expect(input.history).toEqual([]);
+    expect(input.memories).toEqual([]);
+    expect(console.log).toHaveBeenCalledWith("claude clear", `room=${DM}`, "messages=3", "memories=1", "affinity=1");
+  });
+
+  test("인사를 만들지 못하면 빈 방으로 두고 200", async () => {
+    seedRoom();
+    answer.mockRejectedValue(new Error("boom"));
+    putMessage("c1", OWNER, "현석", "/clear", NOW - 1000, DM_MESSAGES);
+    const res = await POST(req({ roomId: DM, messageId: "c1" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cleared: true });
+    expect(fake.col(DM_MESSAGES).size).toBe(0);
+  });
+
+  test("주인이 아닌 사람의 /clear 는 지우지 않는다", async () => {
+    seedRoom();
+    putMessage("c1", OTHER, "민수", "/clear", NOW - 1000, DM_MESSAGES);
+    expect((await POST(req({ roomId: DM, messageId: "c1" }))).status).toBe(400);
+    expect(fake.col(DM_MESSAGES).size).toBe(3);
+    expect(fake.col("memories").size).toBe(1);
+  });
+
+  test("단체방의 /clear 는 평범한 메시지다", async () => {
+    putMessage("g1", "u1", "철수", "@비앙카 /clear", NOW - 1000);
+    expect((await POST(req({ messageId: "g1" }))).status).toBe(200);
+    expect(answer.mock.calls[0][0].greeting).toBeUndefined();
+    expect(fake.col("messages").has("q")).toBe(true);
+  });
+
+  test("/clear 해줘 는 평범한 메시지로 답한다", async () => {
+    seedRoom();
+    putMessage("c1", OWNER, "현석", "/clear 해줘", NOW - 1000, DM_MESSAGES);
+    expect((await POST(req({ roomId: DM, messageId: "c1" }))).status).toBe(200);
+    expect(answer.mock.calls[0][0].greeting).toBeUndefined();
+    expect(fake.col(DM_MESSAGES).has("old1")).toBe(true);
+    expect(job("c1_bianca", DM_JOBS)?.status).toBe("done");
+  });
+});
+
 describe("POST /api/claude 1:1 방", () => {
   beforeEach(() => {
     putMessage("d1", OWNER, "현석", "오늘 뭐하지", NOW - 1000, DM_MESSAGES);

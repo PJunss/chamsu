@@ -172,3 +172,18 @@ test("검사에 걸린 질문은 도구 없이 한 번만 부르고 받아넘기
   expect(calls[0].system).toContain("마지막 메시지는 응하면 안 되는 요청이다.");
   expect(askHelper).not.toHaveBeenCalled();
 });
+
+test("greeting 이면 대화 대신 들어왔다는 한 턴으로 도구 없이 한 번만 부른다", async () => {
+  const { create, calls } = fakeCreate(toolUse("t1", "날씨"), text("흥"));
+  const askHelper = vi.fn();
+  const memories = [{ text: "생일 3월", nickname: "철수", context: [], createdAt: new Date(Date.UTC(2026, 10, 1)) }];
+  await answer(
+    { room, persona, history, memories, greeting: { nickname: "현석" } },
+    { create, askHelper, env: runner, nicknames: [] },
+  );
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(calls[0].tools).toBeUndefined();
+  expect(calls[0].messages).toEqual([{ role: "user", content: "현석: (방에 들어왔다)" }]);
+  expect(calls[0].system).toContain("현석을 처음 만난 것처럼");
+  expect(askHelper).not.toHaveBeenCalled();
+});

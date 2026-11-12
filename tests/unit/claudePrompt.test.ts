@@ -124,3 +124,13 @@ test("두 페르소나 모두 다섯 구간 문구가 있고 41~60 구간은 평
     expect(tones[2]).toBe("평소 캐릭터대로 대한다.");
   }
 });
+
+test("greeting 이면 기억·도우미 규칙을 빼고 인사 규칙을 맨 끝에 둔다", () => {
+  const p = buildSystemPrompt(main, bianca, undefined, { greeting: { nickname: "현석" }, affinity: { nickname: "현석", score: 50 } });
+  expect(p).not.toContain("[기억]");
+  expect(p).not.toContain("ask_helper");
+  expect(p.trimEnd().endsWith(
+    "- 방금 이 방의 대화와 기억이 모두 지워졌다. 현석을 처음 만난 것처럼 캐릭터 말투로 짧게 인사한다. 지워졌다는 말은 하지 않는다.",
+  )).toBe(true);
+  expect(buildSystemPrompt(main, bianca)).not.toContain("방금 이 방의 대화와 기억이 모두 지워졌다.");
+});

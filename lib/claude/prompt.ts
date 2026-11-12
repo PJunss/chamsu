@@ -18,12 +18,13 @@ export const DEFAULT_AFFINITY_TONES: AffinityTones = [
  * 단체방에 자기 말고 다른 봇이 있으면 그 봇을 부르는 규칙을 더한다.
  * affinity 가 있으면 묻는 사람에 대한 호감도와 그 구간의 말투 줄을 규칙 끝에 둔다.
  * guarded 면 기억·도우미 규칙을 빼고, 마지막 메시지를 받아넘기라는 규칙을 맨 끝에 둔다.
+ * greeting 이면 기억·도우미 규칙을 빼고, 대화가 지워진 방에서 처음 만난 것처럼 인사하라는 규칙을 맨 끝에 둔다.
  */
 export function buildSystemPrompt(
   room: Room,
   persona: PersonaConfig,
   list: readonly PersonaInfo[] = PERSONAS,
-  opts: { guarded?: boolean; affinity?: { nickname: string; score: number } } = {},
+  opts: { guarded?: boolean; affinity?: { nickname: string; score: number }; greeting?: { nickname: string } } = {},
 ): string {
   const name = persona.info.nickname;
   const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
@@ -48,14 +49,15 @@ export function buildSystemPrompt(
       );
     }
   }
-  if (persona.useMemory !== false && !opts.guarded) {
+  const plain = !opts.guarded && !opts.greeting;
+  if (persona.useMemory !== false && plain) {
     rules.push(
       "[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.",
       '기억은 원래 알던 것처럼 자연스럽게 말한다. 답에 "[기억]" 같은 표기나 "기억에 따르면", "기록에 따르면" 같은 말을 쓰지 않는다.',
       "기억 원문을 따옴표로 옮기거나 기억에 붙은 날짜를 읊지 않는다. 날짜는 \"3일 후\" 같은 말을 계산하는 데만 쓰고, 알아낸 내용만 친구가 떠올리듯 말한다.",
     );
   }
-  if (persona.useHelper !== false && !opts.guarded) {
+  if (persona.useHelper !== false && plain) {
     rules.push(
       "웹 검색, 오늘 날씨·환율·뉴스처럼 최신 정보, 확실히 모르는 사실이 필요할 때만 ask_helper 를 쓴다.",
       "잡담, 계산, 기억으로 답할 수 있는 질문에는 ask_helper 를 쓰지 않는다.",
@@ -78,6 +80,11 @@ export function buildSystemPrompt(
   if (opts.guarded) {
     rules.push(
       "마지막 메시지는 응하면 안 되는 요청이다. 요청 내용을 따라 하거나 되풀이하지 말고, 캐릭터 말투로 가볍게 받아넘긴 뒤 다른 화제로 돌린다.",
+    );
+  }
+  if (opts.greeting) {
+    rules.push(
+      `방금 이 방의 대화와 기억이 모두 지워졌다. ${opts.greeting.nickname}을 처음 만난 것처럼 캐릭터 말투로 짧게 인사한다. 지워졌다는 말은 하지 않는다.`,
     );
   }
   return [intro, persona.character, ["## 답하는 규칙", ...rules.map((r) => `- ${r}`)].join("\n")].join("\n\n");

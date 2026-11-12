@@ -17,6 +17,7 @@ type RequestTurn = { role: "user" | "assistant"; content: string | ContentBlock[
 /**
  * guarded 는 Jev 요청 검사에 걸린 질문이다. 도구 없이 한 번만 부르고 받아넘기기 규칙을 더한다.
  * affinity 는 묻는 사람에 대한 호감도다. 있으면 그 말투 줄을 프롬프트에 넣는다.
+ * greeting 은 대화가 지워진 1:1 방의 첫 인사다. history·memories 대신 "{닉네임}: (방에 들어왔다)" 한 턴으로 도구 없이 한 번 부른다.
  */
 export type AnswerInput = {
   room: Room;
@@ -25,6 +26,7 @@ export type AnswerInput = {
   memories: Memory[];
   guarded?: boolean;
   affinity?: { nickname: string; score: number };
+  greeting?: { nickname: string };
 };
 export type AnswerDeps = {
   create?: (req: object) => Promise<ModelResponse>;
@@ -43,24 +45,27 @@ const defaultCreate = (req: object) =>
 
 /**
  * Haiku 가 답을 쓰고, tool_use 면 ask_helper 결과를 붙여 다시 부른다. 모델 호출은 최대 MAX_MODEL_CALLS 번. 모델 오류는 throw.
- * guarded 면 도구 없이 한 번만 부른다.
+ * guarded·greeting 이면 도구 없이 한 번만 부른다.
  */
 export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise<string> {
-  const { room, persona, history, memories, guarded = false, affinity } = input;
+  const { room, persona, history, memories, guarded = false, affinity, greeting } = input;
+  const once = guarded || greeting !== undefined;
   const env = deps.env ?? process.env;
   const create = deps.create ?? defaultCreate;
   const ask = deps.askHelper ?? askHelper;
   const nicknames = deps.nicknames ?? parseAllowedNicknames(env.CHAT_NICKNAMES);
-  const useTools = !guarded && persona.useHelper !== false && helperConfigured(env);
+  const useTools = !once && persona.useHelper !== false && helperConfigured(env);
 
-  const messages: RequestTurn[] = buildClaudeMessages(history, persona.info.uid, memories);
+  const messages: RequestTurn[] = greeting
+    ? [{ role: "user", content: `${greeting.nickname}: (방에 들어왔다)` }]
+    : buildClaudeMessages(history, persona.info.uid, memories);
   const base = {
     model: persona.model ?? DEFAULT_MODEL,
     max_tokens: 1024,
     output_config: { effort: "low" },
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: buildSystemPrompt(room, persona, PERSONAS, { guarded, affinity }),
+    system: buildSystemPrompt(room, persona, PERSONAS, { guarded, affinity, greeting }),
     ...(useTools ? { tools: [HELPER_TOOL] } : {}),
   };
 
@@ -73,7 +78,7 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
     res = await create({ ...base, messages });
     calls++;
     step(`model${calls}`, Date.now() - t0);
-    if (guarded || res.stop_reason !== "tool_use" || calls >= MAX_MODEL_CALLS) break;
+    if (once || res.stop_reason !== "tool_use" || calls >= MAX_MODEL_CALLS) break;
     const results: ToolResult[] = [];
     for (const block of res.content) {
       if (block.type !== "tool_use" || !block.id) continue;

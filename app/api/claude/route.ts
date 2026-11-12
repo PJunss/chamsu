@@ -14,7 +14,9 @@ import { affinityScores } from "@/lib/claude/affinityNeg";
 import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
-import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
+import { MAIN_ROOM_ID, pickTargets, resolveRoom, type Room } from "@/lib/claude/rooms";
+import { isClearCommand } from "@/lib/claude/clear";
+import { clearRoom } from "@/lib/claude/clearRoom";
 import { sleep } from "@/lib/claude/sleep";
 import { createTiming, type Timing } from "@/lib/claude/timing";
 
@@ -67,6 +69,49 @@ async function chainNext(url: URL, roomId: string, messageIds: readonly string[]
   );
 }
 
+/**
+ * 1:1 방 /clear: 작업 문서·연속 메시지 대기·요청 검사 없이 그 방을 지우고, 봇이 처음 만난 것처럼 인사 한 줄을 쓴다.
+ * 인사를 만들지 못하면 아무것도 쓰지 않는다(빈 방).
+ */
+async function clearAndGreet(
+  db: ReturnType<typeof getAdminDb>,
+  room: Room,
+  persona: PersonaConfig,
+  q: QuestionDoc,
+  messageId: string,
+): Promise<Response> {
+  const counts = await clearRoom(db, room);
+  console.log(
+    "claude clear",
+    `room=${room.id}`,
+    `messages=${counts.messages}`,
+    `memories=${counts.memories}`,
+    `affinity=${counts.affinity}`,
+  );
+  try {
+    const text = await answer({
+      room,
+      persona,
+      history: [],
+      memories: [],
+      affinity: { nickname: q.nickname, score: AFFINITY_DEFAULT },
+      greeting: { nickname: q.nickname },
+    });
+    await db.collection(room.messagesPath).add({
+      text,
+      nickname: persona.info.nickname,
+      uid: persona.info.uid,
+      createdAt: FieldValue.serverTimestamp(),
+      replyTo: messageId,
+      chainDepth: 1,
+      chainRootUid: q.uid,
+    });
+  } catch (e) {
+    console.error("claude clear greeting failed", `persona=${persona.info.id}`, ...describeError(e));
+  }
+  return Response.json({ cleared: true });
+}
+
 export async function POST(req: Request) {
   let body: { roomId?: unknown; messageId?: unknown } | null;
   try {
@@ -95,6 +140,8 @@ export async function POST(req: Request) {
     const now = Date.now();
     if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);
     const { question, chainDepth, chainRootUid } = target;
+
+    if (isClearCommand(room, q)) return await clearAndGreet(db, room, personas[0], q, id);
 
     /** 작업 문서는 봇마다 `{messageId}_{personaId}` 로 만든다. 이미 있는 봇은 다른 호출이 처리 중이라 건너뛴다. */
     const settled = await Promise.allSettled(
