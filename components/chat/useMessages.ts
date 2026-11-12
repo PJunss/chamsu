@@ -25,7 +25,9 @@ function toMessage(d: QueryDocumentSnapshot): ChatMessage {
 
 const EMPTY: MessageWindow<ChatMessage> = { older: [], latest: [] };
 
-export function useMessages() {
+/** messagesPath 컬렉션의 최근 메시지를 구독한다. 경로가 바뀌면 창 상태를 비우고 다시 구독한다. */
+export function useMessages(messagesPath: string) {
+  const [path, setPath] = useState(messagesPath);
   const [win, setWin] = useState(EMPTY);
   const [windowFull, setWindowFull] = useState(false);
   const [exhausted, setExhausted] = useState(false);
@@ -33,8 +35,16 @@ export function useMessages() {
   const snapshots = useRef(new Map<string, QueryDocumentSnapshot>());
   const loading = useRef(false);
 
+  if (path !== messagesPath) {
+    setPath(messagesPath);
+    setWin(EMPTY);
+    setWindowFull(false);
+    setExhausted(false);
+  }
+
   useEffect(() => {
-    const q = query(collection(getClientDb(), "messages"), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+    snapshots.current = new Map();
+    const q = query(collection(getClientDb(), messagesPath), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
     return onSnapshot(
       q,
       { includeMetadataChanges: true },
@@ -46,7 +56,7 @@ export function useMessages() {
       },
       () => setOffline(true),
     );
-  }, []);
+  }, [messagesPath]);
 
   const messages = mergeWindow(win);
   const oldestId = messages[0]?.id;
@@ -57,7 +67,7 @@ export function useMessages() {
     loading.current = true;
     try {
       const q = query(
-        collection(getClientDb(), "messages"),
+        collection(getClientDb(), messagesPath),
         orderBy("createdAt", "desc"),
         startAfter(cursor),
         limit(PAGE_SIZE),
@@ -69,7 +79,7 @@ export function useMessages() {
     } finally {
       loading.current = false;
     }
-  }, [oldestId]);
+  }, [oldestId, messagesPath]);
 
   const hasOlder = !exhausted && (windowFull || win.older.length > 0);
 

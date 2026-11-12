@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/components/chat/useMessages";
 import type { OnlineUser } from "@/lib/presence";
 import { isNearBottom } from "@/lib/scroll";
-import { PERSONAS, findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
+import { BotAvatar } from "@/components/chat/BotAvatar";
+import { findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
+import type { RoomItem } from "@/lib/claude/roomList";
 
 export type ChatViewProps = {
   me: string;
@@ -14,8 +16,19 @@ export type ChatViewProps = {
   offline: boolean;
   loadOlder: () => Promise<void>;
   send: (text: string) => Promise<boolean>;
-  claudeTyping: boolean;
-  claudeFailed: boolean;
+  /** 지금 방에서 답을 쓰는 중인 페르소나 */
+  typing: PersonaInfo[];
+  /** 호출에 실패한 페르소나 닉네임. 없으면 null */
+  claudeFailed: string | null;
+  rooms: RoomItem[];
+  roomId: string;
+  roomTitle: string;
+  isGroup: boolean;
+  placeholder?: string;
+  selectRoom: (roomId: string) => void;
+  /** 모바일에서 방 목록 화면을 보이는지 */
+  showList: boolean;
+  backToList: () => void;
 };
 
 const timeFmt = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -25,8 +38,8 @@ export function MessageList({
   messages,
   hasOlder,
   loadOlder,
-  claudeTyping,
-}: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder" | "claudeTyping">) {
+  typing,
+}: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder" | "typing">) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const prevHeight = useRef<number | null>(null);
@@ -45,10 +58,11 @@ export function MessageList({
     lastId.current = newestId;
   }, [messages]);
 
+  const typingCount = typing.length;
   useLayoutEffect(() => {
     const el = box.current;
-    if (el && claudeTyping && stick.current) el.scrollTop = el.scrollHeight;
-  }, [claudeTyping]);
+    if (el && typingCount > 0 && stick.current) el.scrollTop = el.scrollHeight;
+  }, [typingCount]);
 
   useEffect(() => {
     const el = box.current;
@@ -77,7 +91,7 @@ export function MessageList({
           const bot = findPersonaByUid(m.uid);
           return (
             <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"} gap-2`}>
-              {bot && <BotAvatar persona={bot} />}
+              {bot && <BotAvatar src={bot.avatar} alt={bot.nickname} />}
               <div className={`flex min-w-0 flex-col ${mine ? "items-end" : "items-start"}`}>
               {!mine && (
                 <span className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
@@ -100,26 +114,13 @@ export function MessageList({
             </li>
           );
         })}
-        {claudeTyping && (
-          <li className="flex items-center gap-2">
-            <BotAvatar persona={PERSONAS[0]} />
-            <span className="animate-pulse text-xs text-zinc-400">{PERSONAS[0].nickname}가 입력 중…</span>
+        {typing.map((p) => (
+          <li key={`typing-${p.id}`} className="flex items-center gap-2">
+            <BotAvatar src={p.avatar} alt={p.nickname} />
+            <span className="animate-pulse text-xs text-zinc-400">{p.nickname}가 입력 중…</span>
           </li>
-        )}
+        ))}
       </ul>
     </div>
-  );
-}
-
-function BotAvatar({ persona }: { persona: PersonaInfo }) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={persona.avatar}
-      alt={persona.nickname}
-      width={36}
-      height={36}
-      className="h-9 w-9 shrink-0 rounded-full object-cover"
-    />
   );
 }

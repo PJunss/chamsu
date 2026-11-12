@@ -8,10 +8,13 @@ export function MessageInput({
   send,
   offline,
   claudeFailed,
+  placeholder,
 }: {
   send: (text: string) => Promise<boolean>;
   offline: boolean;
-  claudeFailed: boolean;
+  /** 호출에 실패한 페르소나 닉네임. 없으면 null */
+  claudeFailed: string | null;
+  placeholder?: string;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,7 +37,7 @@ export function MessageInput({
       ) : (
         <>
           {failed && <p className="mb-1 text-xs text-red-500">전송 실패</p>}
-          {claudeFailed && <p className="mb-1 text-xs text-red-500">비앙카 호출 실패</p>}
+          {claudeFailed && <p className="mb-1 text-xs text-red-500">{claudeFailed} 호출 실패</p>}
         </>
       )}
       <div className="flex gap-2">
@@ -49,6 +52,7 @@ export function MessageInput({
             }
           }}
           maxLength={MAX_TEXT}
+          placeholder={placeholder}
           rows={1}
           className="max-h-32 flex-1 resize-none border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-zinc-500"
         />
