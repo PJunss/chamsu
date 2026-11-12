@@ -1,5 +1,5 @@
-import type { PersonaConfig } from "./index";
-import { findPersonaById } from "./info";
+import type { PersonaConfig } from "../index";
+import { findPersonaById } from "../info";
 
 /** 루치아의 캐릭터와 안내 문구. 루치아를 바꿀 때는 이 파일만 고친다. */
 export const lucia: PersonaConfig = {
