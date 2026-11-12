@@ -15,6 +15,7 @@ test("상수", () => {
   expect(constants.AFFINITY_LOSS).toBe(1.5);
   expect(constants.AFFINITY_GAIN_COOLDOWN_MS).toBe(600_000);
   expect(constants.AFFINITY_NOISE).toBe(0.1);
+  expect(constants.AFFINITY_NEG_MIN).toBe(0.5);
   expect(constants.AFFINITY_GAIN_MIN).toBe(0.5);
   expect("AFFINITY_MAX_DELTA" in constants).toBe(false);
 });
@@ -34,7 +35,10 @@ test("변화량: 오르기는 현재 값에 비례해 어렵고, 내리기는 1.
   expect(affinityDelta(80, 0.98, 0, null, T0)).toBeCloseTo(0.196, 10);
   expect(affinityDelta(50, 0, 0.97, null, T0)).toBeCloseTo(-1.455, 10);
   expect(affinityDelta(100, 1, 0, null, T0)).toBe(0);
-  expect(affinityDelta(50, 0.97, 0.2, null, T0)).toBeCloseTo(0.185, 10);
+  expect(affinityDelta(50, 0.97, 0.2, null, T0)).toBeCloseTo(0.485, 10);
+  expect(affinityDelta(50, 0.97, 0.6, null, T0)).toBeCloseTo(0.485 - 0.9, 10);
+  expect(affinityDelta(50, 0, 0.49, null, T0)).toBe(0);
+  expect(affinityDelta(50, 0, 0.83, null, T0)).toBeCloseTo(-1.245, 10);
 });
 
 test("화면·구간은 소수점을 버린 정수: 49.6 은 49, 60.99 는 41~60 구간", () => {

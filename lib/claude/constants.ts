@@ -31,6 +31,8 @@ export const AFFINITY_LOSS = 1.5;
 export const AFFINITY_GAIN_COOLDOWN_MS = 10 * 60_000;
 /** 0~1 로 자른 호의·적대 점수가 이 값 미만이면 잡음으로 보고 0 으로 친다. */
 export const AFFINITY_NOISE = 0.1;
+/** 적대 점수가 이보다 낮으면 장난·놀림으로 보고 호감도를 깎지 않는다. */
+export const AFFINITY_NEG_MIN = 0.5;
 /** 호의 점수가 이 값 이상으로 올랐을 때만 AFFINITY_GAIN_COOLDOWN_MS 간격을 새로 시작한다. */
 export const AFFINITY_GAIN_MIN = 0.5;
 export const DM_SETTLE_MS = 1_500;

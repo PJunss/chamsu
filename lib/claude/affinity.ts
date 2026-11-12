@@ -1,5 +1,6 @@
 import {
   AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_GAIN_COOLDOWN_MS, AFFINITY_GAIN_MIN, AFFINITY_LOSS,
+  AFFINITY_NEG_MIN,
   AFFINITY_NOISE,
 } from "@/lib/claude/constants";
 
@@ -27,7 +28,7 @@ export function effectiveAffinity(score: number, updatedAtMs: number, nowMs: num
 /**
  * Jev 의 호의·적대 점수(0~1)와 복귀를 반영한 현재 값으로 정한 변화량(소수, 반올림하지 않음).
  * AFFINITY_GAIN × 호의 × (100 − 현재) / 100 − AFFINITY_LOSS × 적대. 높을수록 덜 오르고, 내리기는 쉽다.
- * 호의·적대 점수는 0~1 로 자르고, AFFINITY_NOISE 미만이면 0 으로 본다. 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
+ * 호의·적대 점수는 0~1 로 자르고, 호의는 AFFINITY_NOISE 미만, 적대는 AFFINITY_NEG_MIN 미만이면 0 으로 본다(확실한 비난·욕설만 깎는다). 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
  */
 export function affinityDelta(
   current: number,
@@ -38,12 +39,12 @@ export function affinityDelta(
 ): number {
   const cooling = lastGainAtMs !== null && nowMs - lastGainAtMs < AFFINITY_GAIN_COOLDOWN_MS;
   const gain = cooling ? 0 : (AFFINITY_GAIN * denoise(pos) * (100 - current)) / 100;
-  return gain - AFFINITY_LOSS * denoise(neg);
+  return gain - AFFINITY_LOSS * denoise(neg, AFFINITY_NEG_MIN);
 }
 
-function denoise(v: number): number {
+function denoise(v: number, min: number = AFFINITY_NOISE): number {
   const c = clamp01(v);
-  return c < AFFINITY_NOISE ? 0 : c;
+  return c < min ? 0 : c;
 }
 
 /** 이 변화로 오르기 간격(lastGainAt)을 새로 시작하는지. 호의가 AFFINITY_GAIN_MIN 이상이고 실제로 올랐을 때만이다. */
