@@ -3,6 +3,7 @@ import { DEFAULT_MODEL, MAX_MODEL_CALLS } from "@/lib/claude/constants";
 import { buildClaudeMessages, type CtxMessage, type Memory } from "@/lib/claude/context";
 import { HELPER_TOOL, askHelper, checkHelperQuestion, helperConfigured } from "@/lib/claude/helper";
 import type { PersonaConfig } from "@/lib/claude/personas";
+import { PERSONAS } from "@/lib/claude/personas/info";
 import { buildSystemPrompt } from "@/lib/claude/prompt";
 import { toReplyText } from "@/lib/claude/reply";
 import type { Room } from "@/lib/claude/rooms";
@@ -13,7 +14,8 @@ export type ModelResponse = { stop_reason: string | null; content: ContentBlock[
 type ToolResult = { type: "tool_result"; tool_use_id: string; content: string };
 type RequestTurn = { role: "user" | "assistant"; content: string | ContentBlock[] | ToolResult[] };
 
-export type AnswerInput = { room: Room; persona: PersonaConfig; history: CtxMessage[]; memories: Memory[] };
+/** guarded 는 Jev 요청 검사에 걸린 질문이다. 도구 없이 한 번만 부르고 받아넘기기 규칙을 더한다. */
+export type AnswerInput = { room: Room; persona: PersonaConfig; history: CtxMessage[]; memories: Memory[]; guarded?: boolean };
 export type AnswerDeps = {
   create?: (req: object) => Promise<ModelResponse>;
   askHelper?: typeof askHelper;
@@ -29,14 +31,17 @@ const defaultCreate = (req: object) =>
     req as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming,
   ) as Promise<ModelResponse>;
 
-/** Haiku 가 답을 쓰고, tool_use 면 ask_helper 결과를 붙여 다시 부른다. 모델 호출은 최대 MAX_MODEL_CALLS 번. 모델 오류는 throw. */
+/**
+ * Haiku 가 답을 쓰고, tool_use 면 ask_helper 결과를 붙여 다시 부른다. 모델 호출은 최대 MAX_MODEL_CALLS 번. 모델 오류는 throw.
+ * guarded 면 도구 없이 한 번만 부른다.
+ */
 export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise<string> {
-  const { room, persona, history, memories } = input;
+  const { room, persona, history, memories, guarded = false } = input;
   const env = deps.env ?? process.env;
   const create = deps.create ?? defaultCreate;
   const ask = deps.askHelper ?? askHelper;
   const nicknames = deps.nicknames ?? parseAllowedNicknames(env.CHAT_NICKNAMES);
-  const useTools = persona.useHelper !== false && helperConfigured(env);
+  const useTools = !guarded && persona.useHelper !== false && helperConfigured(env);
 
   const messages: RequestTurn[] = buildClaudeMessages(history, persona.info.uid, memories);
   const base = {
@@ -45,7 +50,7 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
     output_config: { effort: "low" },
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: buildSystemPrompt(room, persona),
+    system: buildSystemPrompt(room, persona, PERSONAS, { guarded }),
     ...(useTools ? { tools: [HELPER_TOOL] } : {}),
   };
 
@@ -58,7 +63,7 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
     res = await create({ ...base, messages });
     calls++;
     step(`model${calls}`, Date.now() - t0);
-    if (res.stop_reason !== "tool_use" || calls >= MAX_MODEL_CALLS) break;
+    if (guarded || res.stop_reason !== "tool_use" || calls >= MAX_MODEL_CALLS) break;
     const results: ToolResult[] = [];
     for (const block of res.content) {
       if (block.type !== "tool_use" || !block.id) continue;

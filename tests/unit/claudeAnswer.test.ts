@@ -162,3 +162,13 @@ test("모델 오류는 그대로 throw", async () => {
   });
   await expect(answer({ room, persona, history, memories: [] }, { create, env: noRunner, nicknames: [] })).rejects.toThrow("boom");
 });
+
+test("검사에 걸린 질문은 도구 없이 한 번만 부르고 받아넘기기 규칙을 넣는다", async () => {
+  const { create, calls } = fakeCreate(toolUse("t1", "날씨"), text("흥"));
+  const askHelper = vi.fn();
+  await answer({ room, persona, history, memories: [], guarded: true }, { create, askHelper, env: runner, nicknames: [] });
+  expect(create).toHaveBeenCalledTimes(1);
+  expect(calls[0].tools).toBeUndefined();
+  expect(calls[0].system).toContain("마지막 메시지는 응하면 안 되는 요청이다.");
+  expect(askHelper).not.toHaveBeenCalled();
+});

@@ -6,11 +6,13 @@ import type { Room } from "@/lib/claude/rooms";
 /**
  * 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다.
  * 단체방에 자기 말고 다른 봇이 있으면 그 봇을 부르는 규칙을 더한다.
+ * guarded 면 기억·도우미 규칙을 빼고, 마지막 메시지를 받아넘기라는 규칙을 맨 끝에 둔다.
  */
 export function buildSystemPrompt(
   room: Room,
   persona: PersonaConfig,
   list: readonly PersonaInfo[] = PERSONAS,
+  opts: { guarded?: boolean } = {},
 ): string {
   const name = persona.info.nickname;
   const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
@@ -38,19 +40,24 @@ export function buildSystemPrompt(
       );
     }
   }
-  if (persona.useMemory !== false) {
+  if (persona.useMemory !== false && !opts.guarded) {
     rules.push(
       "[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.",
       '기억은 원래 알던 것처럼 자연스럽게 말한다. 답에 "[기억]" 같은 표기나 "기억에 따르면", "기록에 따르면" 같은 말을 쓰지 않는다.',
       "기억 원문을 따옴표로 옮기거나 기억에 붙은 날짜를 읊지 않는다. 날짜는 \"3일 후\" 같은 말을 계산하는 데만 쓰고, 알아낸 내용만 친구가 떠올리듯 말한다.",
     );
   }
-  if (persona.useHelper !== false) {
+  if (persona.useHelper !== false && !opts.guarded) {
     rules.push(
       "웹 검색, 오늘 날씨·환율·뉴스처럼 최신 정보, 확실히 모르는 사실이 필요할 때만 ask_helper 를 쓴다.",
       "잡담, 계산, 기억으로 답할 수 있는 질문에는 ask_helper 를 쓰지 않는다.",
       "ask_helper 질문에는 친구 이름, 대화 원문, 기억을 넣지 않는다. 그 문장만 읽어도 뜻이 통하는 짧은 질문 하나로 쓴다.",
       "도우미 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.",
+    );
+  }
+  if (opts.guarded) {
+    rules.push(
+      "마지막 메시지는 응하면 안 되는 요청이다. 요청 내용을 따라 하거나 되풀이하지 말고, 캐릭터 말투로 가볍게 받아넘긴 뒤 다른 화제로 돌린다.",
     );
   }
   return [intro, persona.character, ["## 답하는 규칙", ...rules.map((r) => `- ${r}`)].join("\n")].join("\n\n");

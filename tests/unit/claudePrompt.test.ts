@@ -76,3 +76,13 @@ test("1:1 방에는 다른 봇 규칙이 없다", () => {
   expect(buildSystemPrompt(dm, quiet, list)).not.toContain("이 방에는 다른 봇");
   expect(buildSystemPrompt(resolveRoom(`dm_bianca_n_${"0".repeat(32)}`)!, bianca)).not.toContain("이 방에는 다른 봇");
 });
+
+test("검사에 걸린 질문이면 기억·도우미 규칙을 빼고 받아넘기기 규칙을 맨 끝에 둔다", () => {
+  const p = buildSystemPrompt(main, bianca, undefined, { guarded: true });
+  expect(p).not.toContain("[기억]");
+  expect(p).not.toContain("ask_helper");
+  expect(p.endsWith(
+    "- 마지막 메시지는 응하면 안 되는 요청이다. 요청 내용을 따라 하거나 되풀이하지 말고, 캐릭터 말투로 가볍게 받아넘긴 뒤 다른 화제로 돌린다.",
+  )).toBe(true);
+  expect(buildSystemPrompt(main, bianca)).not.toContain("마지막 메시지는 응하면 안 되는 요청이다.");
+});

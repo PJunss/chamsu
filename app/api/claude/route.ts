@@ -10,6 +10,7 @@ import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
+import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
 import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
 import { sleep } from "@/lib/claude/sleep";
@@ -159,7 +160,7 @@ export async function POST(req: Request) {
     /** 실제 답을 쓴 봇의 답 메시지. 다음 연쇄를 고르는 데 쓴다. */
     const answered: { id: string; uid: string; text: string }[] = [];
 
-    const runBot = async ({ persona, timing, mark }: BotJob): Promise<BotResult> => {
+    const runBot = async ({ persona, timing, mark }: BotJob, guardP: Promise<GuardResult>): Promise<BotResult> => {
       const reply = (text: string) =>
         messages.add({
           text,
@@ -187,21 +188,26 @@ export async function POST(req: Request) {
         });
         timing.lap("history");
 
-        let memories: Memory[] = [];
-        if (persona.useMemory !== false) {
-          try {
-            memories = await recallMemories(db, room, q.nickname, question);
-          } catch (e) {
-            console.error("recall failed", errName(e));
-            timing.note("recall_error", errName(e));
-          }
-          timing.lap("recall");
-          timing.note("recalled", memories.length);
-        }
+        /** 기억 꺼내기와 요청 검사는 함께 기다린다. 검사에 걸리면 꺼낸 기억은 쓰지 않는다. */
+        const useMemory = persona.useMemory !== false;
+        const recallP: Promise<Memory[]> = useMemory
+          ? recallMemories(db, room, q.nickname, question).catch((e: unknown) => {
+              console.error("recall failed", errName(e));
+              timing.note("recall_error", errName(e));
+              return [];
+            })
+          : Promise.resolve([]);
+        const [checked, recalled] = await Promise.all([guardP, recallP]);
+        if (checked && "score" in checked) timing.note("guard", checked.score);
+        else if (checked) timing.note("guard_error", checked.error);
+        const guarded = isGuarded(checked);
+        const memories = guarded ? [] : recalled;
+        timing.lap(useMemory ? "recall" : "guard");
+        if (useMemory) timing.note("recalled", memories.length);
 
         let text: string;
         try {
-          text = await answer({ room, persona, history, memories }, { onStep: (n, ms) => timing.note(n, ms) });
+          text = await answer({ room, persona, history, memories, guarded }, { onStep: (n, ms) => timing.note(n, ms) });
           timing.lap("answer");
         } catch (e) {
           timing.lap("answer");
@@ -227,9 +233,11 @@ export async function POST(req: Request) {
 
     /** 답 만들기·쓰기·기억 저장·다음 연쇄 예약. 사람 요청은 이 결과로 응답하고, 연쇄 요청은 after() 안에서 돌린다. */
     const finish = async (): Promise<Response> => {
+      /** 사람 메시지만 요청 하나에 한 번 검사하고, 부른 봇 모두가 같은 결과를 쓴다. */
+      const guardP: Promise<GuardResult> = isBotUid(q.uid) ? Promise.resolve(null) : guardScore(q.nickname, question);
       let results: BotResult[];
       try {
-        results = await Promise.all(jobs.map(runBot));
+        results = await Promise.all(jobs.map((j) => runBot(j, guardP)));
       } finally {
         logTimings();
       }
