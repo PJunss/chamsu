@@ -1,3 +1,4 @@
+import { BOT_CHAIN_MAX } from "@/lib/claude/constants";
 import { PERSONAS, findMentions, findPersonaById, isBotUid, type PersonaInfo } from "@/lib/claude/personas/info";
 
 /** 봇이 답하는 방. 엔진은 kind 를 직접 보지 않고 이 값의 경로·문구만 쓴다. 브라우저도 import 한다. */
@@ -50,19 +51,33 @@ export function resolveRoom(roomId: string, list: readonly PersonaInfo[] = PERSO
   };
 }
 
-/** 그 방에서 답할 메시지면 페르소나와 질문. 단체방은 부르는 말로, 1:1 방은 주인이 쓴 메시지 전체가 질문이다. */
-export function pickTarget(
+export type ChainMessage = { uid: string; text: string; chainDepth?: unknown; chainRootUid?: unknown };
+
+export type Targets = { personas: PersonaInfo[]; question: string; chainDepth: number; chainRootUid: string };
+
+/**
+ * 그 방에서 답할 메시지면 답할 페르소나들과 질문, 그 답에 저장할 연쇄 단계·연쇄를 시작한 사람.
+ * 단체방은 부르는 말로 찾고, 봇 메시지는 chainDepth 가 BOT_CHAIN_MAX 이하일 때만 자기 말고 다른 봇을 부른다.
+ * 1:1 방은 주인이 쓴 메시지 전체가 질문이다.
+ */
+export function pickTargets(
   room: Room,
-  message: { uid: string; text: string },
+  message: ChainMessage,
   list: readonly PersonaInfo[] = PERSONAS,
-): { persona: PersonaInfo; question: string } | null {
-  if (isBotUid(message.uid, list)) return null;
-  if (room.kind === "group") {
-    const persona = findMentions(message.text, list).find((p) => room.personaIds.includes(p.id));
-    return persona ? { persona, question: message.text.trim() } : null;
-  }
-  if (message.uid !== room.ownerUid) return null;
+): Targets | null {
   const question = message.text.trim();
+  if (room.kind === "group") {
+    const mentioned = findMentions(message.text, list).filter((p) => room.personaIds.includes(p.id));
+    if (!isBotUid(message.uid, list)) {
+      return mentioned.length > 0 ? { personas: mentioned, question, chainDepth: 1, chainRootUid: message.uid } : null;
+    }
+    const { chainDepth, chainRootUid } = message;
+    if (typeof chainDepth !== "number" || !Number.isInteger(chainDepth) || chainDepth < 1 || chainDepth > BOT_CHAIN_MAX) return null;
+    if (typeof chainRootUid !== "string" || !chainRootUid) return null;
+    const personas = mentioned.filter((p) => p.uid !== message.uid);
+    return personas.length > 0 ? { personas, question, chainDepth: chainDepth + 1, chainRootUid } : null;
+  }
+  if (isBotUid(message.uid, list) || message.uid !== room.ownerUid) return null;
   const persona = findPersonaById(room.personaIds[0], list);
-  return question && persona ? { persona, question } : null;
+  return question && persona ? { personas: [persona], question, chainDepth: 1, chainRootUid: message.uid } : null;
 }

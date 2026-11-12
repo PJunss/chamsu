@@ -7,7 +7,7 @@ import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig } from "@/lib/claude/personas";
-import { MAIN_ROOM_ID, pickTarget, resolveRoom } from "@/lib/claude/rooms";
+import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
 import { sleep } from "@/lib/claude/sleep";
 import { createTiming } from "@/lib/claude/timing";
 
@@ -44,9 +44,9 @@ export async function POST(req: Request) {
     const messages = db.collection(room.messagesPath);
     const snap = await messages.doc(id).get();
     if (!snap.exists) return fail("not_found", 404);
-    const q = snap.data() as { text: unknown; uid: string; nickname: string; createdAt: Timestamp };
-    const target = typeof q.text === "string" ? pickTarget(room, { uid: q.uid, text: q.text }) : null;
-    const persona = target ? getPersonaConfig(target.persona.id) : null;
+    const q = snap.data() as { text: unknown; uid: string; nickname: string; createdAt: Timestamp; chainDepth?: unknown; chainRootUid?: unknown };
+    const target = typeof q.text === "string" ? pickTargets(room, { ...q, text: q.text }) : null;
+    const persona = target ? getPersonaConfig(target.personas[0].id) : null;
     if (!target || !persona) return fail("bad_request", 400);
     const now = Date.now();
     if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);

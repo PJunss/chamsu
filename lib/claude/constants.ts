@@ -16,6 +16,8 @@ export const JUDGE_READ_MAX = 600;
 export const JUDGE_BATCH = 300;
 export const JUDGE_THRESHOLD = 0.6;
 export const DM_SETTLE_MS = 1_500;
+/** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
+export const BOT_CHAIN_MAX = 3;
 
 /** 봇 사용량 제한. 값이 null 인 제한은 검사하지 않는다. 켤 때의 예: { user: { windowMs: 60_000, max: 5 }, dailyMax: 200 } */
 export type ClaudeLimits = { user: { windowMs: number; max: number } | null; dailyMax: number | null };
