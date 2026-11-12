@@ -10,7 +10,7 @@ import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
-import { affinityNeg } from "@/lib/claude/affinity";
+import { affinityNeg } from "@/lib/claude/affinityNeg";
 import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";

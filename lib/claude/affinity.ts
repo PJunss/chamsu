@@ -1,6 +1,5 @@
 import {
   AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_GAIN_COOLDOWN_MS, AFFINITY_GAIN_MIN, AFFINITY_LOSS,
-  AFFINITY_LAUGH_FACTOR,
   AFFINITY_NEG_MIN,
   AFFINITY_NOISE,
 } from "@/lib/claude/constants";
@@ -84,19 +83,4 @@ export function affinityByPersona(rows: readonly AffinityRow[], nowMs: number): 
 /** 화면에 보일 한 페르소나의 호감도. 문서가 없으면 AFFINITY_DEFAULT. */
 export function shownAffinity(scores: Readonly<Record<string, number>>, personaId: string): number {
   return scores[personaId] ?? AFFINITY_DEFAULT;
-}
-
-const LAUGH = /ㅋㅋ|ㅎㅎ|히히|하하|키키|lol|😂|🤣/i;
-
-/** 메시지에 웃음 표시(ㅋㅋ, ㅎㅎ, 히히 등)가 있는지. */
-export function hasLaugh(text: string): boolean {
-  return LAUGH.test(text);
-}
-
-/**
- * 호감도 계산에 쓸 적대 점수. 웃음 표시가 있으면 장난으로 보고 AFFINITY_LAUGH_FACTOR 를 곱한다.
- * 가드레일에 걸린 메시지(guarded)는 웃음 표시가 있어도 줄이지 않는다.
- */
-export function affinityNeg(neg: number, text: string, guarded: boolean): number {
-  return !guarded && hasLaugh(text) ? clamp01(neg) * AFFINITY_LAUGH_FACTOR : neg;
 }

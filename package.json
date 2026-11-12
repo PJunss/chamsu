@@ -17,6 +17,7 @@
     "@anthropic-ai/sdk": "^1.8.0",
     "firebase": "^13.2.0",
     "firebase-admin": "^14.5.0",
+    "korcen": "1.0.1",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"
