@@ -6,7 +6,7 @@ import {
   type QueryConstraint, type QueryDocumentSnapshot, type Timestamp,
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
-import { applySnapshot, mergeWindow, prependOlder, type MessageWindow } from "@/lib/messageWindow";
+import { applySnapshot, mergeWindow, prependOlder, visibleAfterCleared, type MessageWindow } from "@/lib/messageWindow";
 
 export const PAGE_SIZE = 50;
 
@@ -42,8 +42,9 @@ function afterCleared(clearedAt: Timestamp | null): QueryConstraint[] {
 }
 
 /**
- * messagesPath 컬렉션의 최근 메시지를 구독한다. cleared 가 ready 가 아니면 구독하지 않고,
- * clearedAt 이 있으면 그 시각 뒤 메시지만 구독하고 지난 메시지 더 보기도 그 시각에서 멈춘다.
+ * messagesPath 컬렉션의 최근 메시지를 구독한다. cleared 가 ready 가 아니면 구독하지 않는다.
+ * clearedAt 이 있으면 실시간 구독은 조건 없이 받아 그 시각 뒤 메시지와 서버 확정 전 메시지만 보이고
+ * (조건을 걸면 방금 보낸 메시지가 서버 확정 전까지 빠진다), 지난 메시지 더 보기는 쿼리 조건으로 그 시각에서 멈춘다.
  * 경로나 clearedAt 이 바뀌면 창 상태를 비우고 다시 구독한다.
  */
 export function useMessages(messagesPath: string, cleared: { ready: boolean; clearedAt: Timestamp | null }) {
@@ -71,20 +72,24 @@ export function useMessages(messagesPath: string, cleared: { ready: boolean; cle
     loading.current = false;
     snapshots.current = new Map();
     if (!ready) return;
-    const q = query(
-      collection(getClientDb(), messagesPath),
-      ...afterCleared(clearedAt),
-      orderBy("createdAt", "desc"),
-      limit(PAGE_SIZE),
-    );
+    const q = query(collection(getClientDb(), messagesPath), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
     return onSnapshot(
       q,
       { includeMetadataChanges: true },
       (snap) => {
-        for (const d of snap.docs) snapshots.current.set(d.id, d);
+        const { items, full } = visibleAfterCleared(
+          snap.docs.map((d) => ({
+            item: d,
+            pending: d.metadata.hasPendingWrites,
+            createdAt: (d.data({ serverTimestamps: "estimate" }).createdAt as Timestamp | undefined) ?? null,
+          })),
+          clearedAt,
+          PAGE_SIZE,
+        );
+        for (const d of items) snapshots.current.set(d.id, d);
         setOffline(snap.metadata.fromCache);
-        setWindowFull(snap.docs.length === PAGE_SIZE);
-        setWin((prev) => applySnapshot(prev, snap.docs.map(toMessage).reverse(), snap.docs.length === PAGE_SIZE));
+        setWindowFull(full);
+        setWin((prev) => applySnapshot(prev, items.map(toMessage).reverse(), full));
       },
       () => setOffline(true),
     );

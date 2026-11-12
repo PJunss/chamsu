@@ -727,6 +727,21 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     expect(recallMemories.mock.calls[0][3]).toEqual({ clearedAt: fake.col("rooms").get(DM)!.clearedAt });
   });
 
+  test("앱 시계가 지운 시각보다 뒤처져도 /clear 뒤 저장한 호감도가 지운 이전으로 보이지 않는다", async () => {
+    guardScore.mockResolvedValue({ guard: 0, pos: 0.98, neg: 0, threat: 0 });
+    fake.col("rooms").set(DM, { clearedAt: ts(NOW + 3000) });
+    putMessage("d1", OWNER, "현석", "고마워", NOW + 4000, DM_MESSAGES);
+    expect((await POST(req({ roomId: DM, messageId: "d1" }))).status).toBe(200);
+    const saved = fake.col("affinity").get(`${DM}_bianca_${OWNER}`)!;
+    expect((saved.updatedAt as { toMillis: () => number }).toMillis()).toBe(NOW + 3001);
+    expect(answer.mock.calls[0][0].affinity?.score).toBeCloseTo(50.49, 10);
+
+    putMessage("d2", OWNER, "현석", "안녕", NOW + 4500, DM_MESSAGES);
+    guardScore.mockResolvedValue({ guard: 0, pos: 0, neg: 0, threat: 0 });
+    await POST(req({ roomId: DM, messageId: "d2" }));
+    expect(answer.mock.calls[1][0].affinity?.score).toBeCloseTo(50.49, 3);
+  });
+
   test("방 문서가 없으면 조건 없이 대화 기록을 읽고 호감도도 그대로 쓴다", async () => {
     seedRoom();
     putMessage("d1", OWNER, "현석", "오늘 뭐하지", NOW - 1000, DM_MESSAGES);

@@ -141,6 +141,8 @@ export async function POST(req: Request) {
     /** /clear 는 1:1 방에만 있어 단체방은 방 문서를 읽지 않는다. 대화 기록·기억·호감도는 이 시각 이후만 본다. */
     const clearedAt = room.kind === "dm" ? await readClearedAt(db, room.id) : null;
     const clearedAtMs = clearedAt ? clearedAt.toMillis() : null;
+    /** 호감도 시각은 앱 서버 시계라 Firestore 서버 시각인 clearedAt 보다 뒤처질 수 있다. 지운 뒤 저장한 값이 지운 이전으로 보이지 않게 맞춘다. */
+    const affinityNow = clearedAtMs !== null ? Math.max(now, clearedAtMs + 1) : now;
 
     /** 작업 문서는 봇마다 `{messageId}_{personaId}` 로 만든다. 이미 있는 봇은 다른 호출이 처리 중이라 건너뛴다. */
     const settled = await Promise.allSettled(
@@ -257,7 +259,7 @@ export async function POST(req: Request) {
         /** 사람 메시지만 호감도를 정한다. Jev 점수가 있으면 답 만들기 전에 저장하고, 없으면 읽기만 한다. */
         let affinity: { nickname: string; score: number } | undefined;
         if (!isBotUid(q.uid)) {
-          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now, clearedAtMs };
+          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now: affinityNow, clearedAtMs };
           let score: number;
           try {
             if (checked && "guard" in checked) {

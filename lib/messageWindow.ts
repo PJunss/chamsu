@@ -39,3 +39,27 @@ export function prependOlder<T extends WindowItem>(prev: MessageWindow<T>, page:
 export function mergeWindow<T extends WindowItem>(w: MessageWindow<T>): T[] {
   return dedupe([...w.older, ...w.latest]);
 }
+
+export type Stamp = { seconds: number; nanoseconds: number };
+
+/** 구독 결과 문서 하나. pending 은 서버 확정 전(내가 방금 보낸 메시지)인지. */
+export type SnapshotDoc<T> = { item: T; pending: boolean; createdAt: Stamp | null };
+
+function after(a: Stamp, b: Stamp): boolean {
+  return a.seconds !== b.seconds ? a.seconds > b.seconds : a.nanoseconds > b.nanoseconds;
+}
+
+/**
+ * 실시간 구독 결과(최신 순)에서 /clear 이후 것만 남긴다. 서버 확정 전 메시지와 시각을 모르는 메시지는 남긴다.
+ * full 은 구독 창이 다 찼는지다. 하나라도 걸러졌으면 창이 지운 시각에 닿았으므로 false 다.
+ */
+export function visibleAfterCleared<T>(
+  docs: readonly SnapshotDoc<T>[],
+  clearedAt: Stamp | null,
+  pageSize: number,
+): { items: T[]; full: boolean } {
+  const kept = clearedAt
+    ? docs.filter((d) => d.pending || d.createdAt === null || after(d.createdAt, clearedAt))
+    : docs;
+  return { items: kept.map((d) => d.item), full: kept.length === docs.length && docs.length === pageSize };
+}

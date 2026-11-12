@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { applySnapshot, mergeWindow, prependOlder, type MessageWindow } from "@/lib/messageWindow";
+import { applySnapshot, mergeWindow, prependOlder, visibleAfterCleared, type MessageWindow } from "@/lib/messageWindow";
 
 type M = { id: string; createdAt: Date | null };
 
@@ -51,4 +51,27 @@ describe("prependOlder", () => {
     const next = prependOlder({ older: asc(5, 4), latest: asc(3, 1) }, asc(7, 5));
     expect(ids(mergeWindow(next))).toEqual(ids(asc(7, 1)));
   });
+});
+
+const sd = (id: string, seconds: number | null, pending = false) => ({
+  item: id,
+  pending,
+  createdAt: seconds === null ? null : { seconds, nanoseconds: 0 },
+});
+
+test("visibleAfterCleared: 지운 시각 이전은 숨기고, 서버 확정 전 메시지는 보인다", () => {
+  const cleared = { seconds: 100, nanoseconds: 0 };
+  const docs = [sd("mine", 99, true), sd("new", 101), sd("same", 100), sd("old", 50)];
+  expect(visibleAfterCleared(docs, cleared, 4)).toEqual({ items: ["mine", "new"], full: false });
+  expect(visibleAfterCleared([sd("n", 100)].map((d) => ({ ...d, createdAt: { seconds: 100, nanoseconds: 1 } })), cleared, 1)).toEqual({
+    items: ["n"], full: true,
+  });
+});
+
+test("visibleAfterCleared: 걸러진 게 없으면 창이 다 찼는지로 full 을 정하고, 지운 시각이 없으면 모두 보인다", () => {
+  const cleared = { seconds: 100, nanoseconds: 0 };
+  expect(visibleAfterCleared([sd("a", 200), sd("b", 150)], cleared, 2)).toEqual({ items: ["a", "b"], full: true });
+  expect(visibleAfterCleared([sd("a", 200)], cleared, 2)).toEqual({ items: ["a"], full: false });
+  expect(visibleAfterCleared([sd("a", 200), sd("b", 1)], null, 2)).toEqual({ items: ["a", "b"], full: true });
+  expect(visibleAfterCleared([sd("x", null)], cleared, 1)).toEqual({ items: ["x"], full: true });
 });
