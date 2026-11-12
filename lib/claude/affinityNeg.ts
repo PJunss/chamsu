@@ -1,4 +1,4 @@
-import { general } from "korcen";
+import { check } from "korcen";
 import { clamp01 } from "@/lib/claude/affinity";
 import { AFFINITY_LAUGH_FACTOR } from "@/lib/claude/constants";
 
@@ -11,14 +11,17 @@ export function hasLaugh(text: string): boolean {
   return LAUGH.test(text);
 }
 
-/** korcen 의 일반 욕설 사전에 걸리는 말이 있는지. */
+/** 위협 표현. korcen 사전에 없는 것(죽여버린다, 쳐맞을래 등)을 채운다. */
+const THREAT = /죽(여|일|을래|인다|는다)|뒤질|디질|쳐\s*맞|맞을래|패(버|줄)|때려\s*(줄|버)/;
+
+/** 욕설·비하(korcen 전체 사전)나 위협 표현이 있는지. */
 export function hasProfanity(text: string): boolean {
-  return general(text);
+  return check(text) || THREAT.test(text);
 }
 
 /**
  * 호감도 계산에 쓸 적대 점수. 웃음 표시가 있으면 장난으로 보고 AFFINITY_LAUGH_FACTOR 를 곱한다.
- * 가드레일에 걸린 메시지(guarded)나 욕설이 든 메시지는 웃음 표시가 있어도 줄이지 않는다.
+ * 가드레일에 걸린 메시지(guarded)나 욕설·위협이 든 메시지는 웃음 표시가 있어도 줄이지 않는다.
  */
 export function affinityNeg(neg: number, text: string, guarded: boolean): number {
   if (guarded || !hasLaugh(text) || hasProfanity(text)) return neg;

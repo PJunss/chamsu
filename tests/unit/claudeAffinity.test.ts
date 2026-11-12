@@ -189,7 +189,10 @@ test("웃음 표시가 있으면 적대 점수를 절반으로 보되, 가드레
   expect(affinityNeg(0.9, "ㅋㅋ 병신아", true)).toBe(0.9);
   expect(affinityNeg(0.87, "ㅋㅋ 병신아", false)).toBe(0.87);
   expect(affinityNeg(0.88, "ㅋㅋ 꺼져", false)).toBe(0.88);
-  expect(affinityNeg(0.78, "ㅋㅋ 뒤질래?", false)).toBeCloseTo(0.39, 10);
+  expect(affinityNeg(0.78, "ㅋㅋ 뒤질래?", false)).toBe(0.78);
+  expect(affinityNeg(0.8, "ㅋㅋ 죽여버린다", false)).toBe(0.8);
+  expect(affinityNeg(0.8, "ㅋㅋ 개쳐맞을래?", false)).toBe(0.8);
+  expect(affinityNeg(0.85, "ㅋㅋㅋ 멍청이", false)).toBeCloseTo(0.425, 10);
   expect(affinityDelta(50, 0, affinityNeg(0.8, "ㅋㅋ 바보야", false), null, T0)).toBe(0);
   expect(affinityDelta(50, 0, affinityNeg(0.64, "뒤질래?", false), null, T0)).toBeCloseTo(-0.96, 10);
 });
