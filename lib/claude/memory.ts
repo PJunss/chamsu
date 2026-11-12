@@ -28,6 +28,8 @@ export type MemoryStateDoc = { _id: string; lastJudgedAt: { seconds: number; nan
 
 const DUPLICATE_KEY = 11000;
 type Deps = { askJev?: typeof askJev; env?: NodeJS.ProcessEnv };
+/** clearedAt 은 그 방을 /clear 한 시각. 있으면 그 뒤에 만들어진 기억만 꺼낸다. */
+type RecallDeps = Deps & { clearedAt?: Timestamp | null };
 
 const RECALL_QUESTION = "이 기억이 위 채팅 질문에 답하는 데 직접 도움이 되는가?";
 const JUDGE_QUESTION =
@@ -42,17 +44,23 @@ export function pickMemories(scores: Record<string, number>, candidates: StoredM
     .slice(0, RECALL_MAX);
 }
 
-/** 그 방의 기억 중 질문에 도움이 되는 것을 오래된 순으로. MongoDB·Jev 설정이 없거나 후보가 없거나 Jev 가 실패하면 빈 목록. */
+/**
+ * 그 방의 기억 중 질문에 도움이 되는 것을 오래된 순으로. /clear 이전 기억은 후보에 넣지 않는다.
+ * MongoDB·Jev 설정이 없거나 후보가 없거나 Jev 가 실패하면 빈 목록.
+ */
 export async function recallMemories(
   room: Room,
   asker: string,
   question: string,
-  deps: Deps = {},
+  deps: RecallDeps = {},
 ): Promise<Memory[]> {
   const env = deps.env ?? process.env;
   if (!jevConfigured(env) || !mongoConfigured(env)) return [];
   const memories = await mongoCollection<MemoryDoc>("memories", env);
-  const docs = await memories.find({ roomId: room.id }).sort({ createdAt: -1 }).limit(RECALL_CANDIDATES).toArray();
+  const filter = deps.clearedAt
+    ? { roomId: room.id, createdAt: { $gt: deps.clearedAt.toDate() } }
+    : { roomId: room.id };
+  const docs = await memories.find(filter).sort({ createdAt: -1 }).limit(RECALL_CANDIDATES).toArray();
   if (docs.length === 0) return [];
   const candidates: StoredMemory[] = docs.map((x) => ({
     id: x._id,
@@ -174,7 +182,7 @@ export async function rememberSince(
     saved += keep.length;
   }
 
-  await advanceState(room.id, stamps.get(range[range.length - 1].id)!, env);
+  await advanceMemoryState(room.id, stamps.get(range[range.length - 1].id)!, env);
   return { judged: targets.length, saved };
 }
 
@@ -182,7 +190,11 @@ export async function rememberSince(
  * 판정 상태를 end 로 옮긴다. 저장값보다 클 때만 바꾸는 조건부 upsert 이고,
  * 저장값이 이미 앞서 있어 새로 넣으려다 생긴 중복 키 오류는 무시한다.
  */
-async function advanceState(roomId: string, end: Timestamp, env: NodeJS.ProcessEnv): Promise<void> {
+export async function advanceMemoryState(
+  roomId: string,
+  end: { seconds: number; nanoseconds: number },
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   const states = await mongoCollection<MemoryStateDoc>("memoryState", env);
   const { seconds, nanoseconds } = end;
   try {

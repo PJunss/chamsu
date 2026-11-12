@@ -10,9 +10,15 @@ const REFRESH_MS = 60_000;
 /**
  * 지금 방에서 내 호감도 문서를 구독해 페르소나 id → 화면 점수(복귀 반영, 버린 정수)를 돌려준다.
  * 첫 스냅샷 전과 구독 오류일 때는 ready 가 false 다. 시간 복귀를 보이려고 1분마다 다시 계산한다.
+ * cleared 가 ready 가 아니면 ready 가 false 이고, clearedAt 이전에 바뀐 문서는 없는 것(50)으로 본다.
  * 방이나 uid 가 바뀌면 다시 구독한다.
  */
-export function useAffinity(roomId: string, uid: string): { ready: boolean; scores: Record<string, number> } {
+export function useAffinity(
+  roomId: string,
+  uid: string,
+  cleared: { ready: boolean; clearedAt: { toMillis: () => number } | null },
+): { ready: boolean; scores: Record<string, number> } {
+  const clearedAtMs = cleared.clearedAt ? cleared.clearedAt.toMillis() : null;
   const key = `${roomId}|${uid}`;
   const [shownKey, setShownKey] = useState(key);
   const [rows, setRows] = useState<AffinityRow[]>([]);
@@ -55,6 +61,7 @@ export function useAffinity(roomId: string, uid: string): { ready: boolean; scor
     return () => clearInterval(t);
   }, []);
 
-  const scores = useMemo(() => affinityByPersona(rows, now), [rows, now]);
-  return useMemo(() => ({ ready, scores }), [ready, scores]);
+  const scores = useMemo(() => affinityByPersona(rows, now, clearedAtMs), [rows, now, clearedAtMs]);
+  const shown = ready && cleared.ready;
+  return useMemo(() => ({ ready: shown, scores }), [shown, scores]);
 }

@@ -71,12 +71,26 @@ export function clampAffinity(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
 
+/** 방을 /clear 한 시각(clearedAtMs) 이전에 마지막으로 바뀐 호감도 문서는 없는 것으로 본다. */
+export function clearedBefore(updatedAtMs: number, clearedAtMs: number | null): boolean {
+  return clearedAtMs !== null && updatedAtMs <= clearedAtMs;
+}
+
 export type AffinityRow = { personaId: string; score: number; updatedAtMs: number };
 
-/** 화면에 보일 페르소나별 호감도(복귀 반영, 버린 정수). 문서가 없는 페르소나는 넣지 않는다. */
-export function affinityByPersona(rows: readonly AffinityRow[], nowMs: number): Record<string, number> {
+/**
+ * 화면에 보일 페르소나별 호감도(복귀 반영, 버린 정수). 문서가 없거나 /clear 이전 문서인 페르소나는 넣지 않는다.
+ */
+export function affinityByPersona(
+  rows: readonly AffinityRow[],
+  nowMs: number,
+  clearedAtMs: number | null = null,
+): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const r of rows) out[r.personaId] = displayAffinity(effectiveAffinity(r.score, r.updatedAtMs, nowMs));
+  for (const r of rows) {
+    if (clearedBefore(r.updatedAtMs, clearedAtMs)) continue;
+    out[r.personaId] = displayAffinity(effectiveAffinity(r.score, r.updatedAtMs, nowMs));
+  }
   return out;
 }
 

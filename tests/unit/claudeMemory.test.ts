@@ -327,3 +327,16 @@ test("MONGODB_URI 가 없으면 기억 꺼내기·저장을 건너뛴다", async
   expect(askJev).not.toHaveBeenCalled();
   expect(await memIds()).toEqual(["a"]);
 });
+
+test("recallMemories: 지운 시각 이전 기억은 후보에 넣지 않는다", async () => {
+  await putMemory("old", "main", "현석", "옛 기억", T0);
+  await putMemory("new", "main", "현석", "새 기억", T0 + 2000);
+  const askJev = vi.fn<typeof AskJev>(async (_state, questions) => {
+    expect(Object.values(questions).map((q) => q.instructions.memory)).toEqual(["현석: 새 기억"]);
+    return { k0: 0.9 };
+  });
+  const out = await recallMemories(main, "민수", "q", { askJev, env, clearedAt: Timestamp.fromMillis(T0 + 1000) });
+  expect(out.map((m) => m.text)).toEqual(["새 기억"]);
+  const all = vi.fn<typeof AskJev>(async () => ({ k0: 0.9, k1: 0.9 }));
+  expect(await recallMemories(main, "민수", "q", { askJev: all, env, clearedAt: null })).toHaveLength(2);
+});

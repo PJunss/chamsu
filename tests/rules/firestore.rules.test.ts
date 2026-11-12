@@ -259,3 +259,27 @@ describe("affinity", () => {
     await assertFails(setDoc(doc(me(), `affinity/main_lucia_${ME}`), { roomId: "main", personaId: "lucia", uid: ME, score: 100 }));
   });
 });
+
+describe("rooms 방 문서", () => {
+  const ME = "n_" + "0123456789abcdef".repeat(2);
+  const YOU = "n_" + "fedcba9876543210".repeat(2);
+  const MY_ROOM = `rooms/dm_bianca_${ME}`;
+  const YOUR_ROOM = `rooms/dm_bianca_${YOU}`;
+  const me = () => member(ME, "현석");
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), MY_ROOM), { clearedAt: Timestamp.now() });
+      await setDoc(doc(ctx.firestore(), YOUR_ROOM), { clearedAt: Timestamp.now() });
+    });
+  });
+
+  test("주인은 자기 방 문서를 읽는다", async () => assertSucceeds(getDoc(doc(me(), MY_ROOM))));
+  test("남의 방 문서는 못 읽는다", async () => assertFails(getDoc(doc(me(), YOUR_ROOM))));
+  test("비회원은 못 읽는다", async () => assertFails(getDoc(doc(outsider(), MY_ROOM))));
+  test("쓰기는 주인도 거부", async () => {
+    await assertFails(setDoc(doc(me(), MY_ROOM), { clearedAt: Timestamp.now() }));
+    await assertFails(updateDoc(doc(me(), MY_ROOM), { clearedAt: null }));
+    await assertFails(deleteDoc(doc(me(), MY_ROOM)));
+  });
+});

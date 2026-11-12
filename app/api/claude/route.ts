@@ -17,6 +17,7 @@ import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
 import { MAIN_ROOM_ID, pickTargets, resolveRoom, type Room } from "@/lib/claude/rooms";
 import { isClearCommand } from "@/lib/claude/clear";
 import { clearRoom } from "@/lib/claude/clearRoom";
+import { readClearedAt } from "@/lib/claude/roomState";
 import { sleep } from "@/lib/claude/sleep";
 import { createTiming, type Timing } from "@/lib/claude/timing";
 
@@ -80,14 +81,8 @@ async function clearAndGreet(
   q: QuestionDoc,
   messageId: string,
 ): Promise<Response> {
-  const counts = await clearRoom(db, room);
-  console.log(
-    "claude clear",
-    `room=${room.id}`,
-    `messages=${counts.messages}`,
-    `memories=${counts.memories}`,
-    `affinity=${counts.affinity}`,
-  );
+  const { clearedAt } = await clearRoom(db, room);
+  console.log("claude clear", `room=${room.id}`, `clearedAt=${clearedAt.toMillis()}`);
   try {
     const text = await answer({
       room,
@@ -142,6 +137,10 @@ export async function POST(req: Request) {
     const { question, chainDepth, chainRootUid } = target;
 
     if (isClearCommand(room, q)) return await clearAndGreet(db, room, personas[0], q, id);
+
+    /** /clear 는 1:1 방에만 있어 단체방은 방 문서를 읽지 않는다. 대화 기록·기억·호감도는 이 시각 이후만 본다. */
+    const clearedAt = room.kind === "dm" ? await readClearedAt(db, room.id) : null;
+    const clearedAtMs = clearedAt ? clearedAt.toMillis() : null;
 
     /** 작업 문서는 봇마다 `{messageId}_{personaId}` 로 만든다. 이미 있는 봇은 다른 호출이 처리 중이라 건너뛴다. */
     const settled = await Promise.allSettled(
@@ -230,7 +229,8 @@ export async function POST(req: Request) {
           return quota;
         }
 
-        const historySnap = await messages.orderBy("createdAt").endAt(q.createdAt).limitToLast(CONTEXT_SIZE).get();
+        const historyQuery = clearedAt ? messages.where("createdAt", ">", clearedAt) : messages;
+        const historySnap = await historyQuery.orderBy("createdAt").endAt(q.createdAt).limitToLast(CONTEXT_SIZE).get();
         const history: CtxMessage[] = historySnap.docs.map((d) => {
           const x = d.data();
           return { id: d.id, uid: x.uid, nickname: x.nickname, text: x.text };
@@ -240,7 +240,7 @@ export async function POST(req: Request) {
         /** 기억 꺼내기와 요청 검사는 함께 기다린다. 검사에 걸리면 꺼낸 기억은 쓰지 않는다. */
         const useMemory = persona.useMemory !== false;
         const recallP: Promise<Memory[]> = useMemory
-          ? recallMemories(room, q.nickname, question).catch((e: unknown) => {
+          ? recallMemories(room, q.nickname, question, { clearedAt }).catch((e: unknown) => {
               console.error("recall failed", errName(e));
               timing.note("recall_error", errName(e));
               return [];
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
         /** 사람 메시지만 호감도를 정한다. Jev 점수가 있으면 답 만들기 전에 저장하고, 없으면 읽기만 한다. */
         let affinity: { nickname: string; score: number } | undefined;
         if (!isBotUid(q.uid)) {
-          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now };
+          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now, clearedAtMs };
           let score: number;
           try {
             if (checked && "guard" in checked) {

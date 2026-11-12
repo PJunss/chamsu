@@ -41,6 +41,11 @@ service cloud.firestore {
       allow read: if isMember();
     }
 
+    // 1:1 방 문서는 clearedAt(/clear 한 시각)만 담는다. 주인만 읽고 쓰기는 서버만 한다
+    match /rooms/{roomId} {
+      allow read: if isRoomOwner(roomId);
+    }
+
     match /rooms/{roomId}/messages/{id} {
       allow read: if isRoomOwner(roomId);
       allow create: if isRoomOwner(roomId) && validMessage();

@@ -1,11 +1,20 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
-import { affinityDelta, affinityDocId, clampAffinity, effectiveAffinity, startsGainCooldown } from "@/lib/claude/affinity";
+import {
+  affinityDelta, affinityDocId, clampAffinity, clearedBefore, effectiveAffinity, startsGainCooldown,
+} from "@/lib/claude/affinity";
 import { AFFINITY_DEFAULT } from "@/lib/claude/constants";
 
-export type AffinityKey = { roomId: string; personaId: string; uid: string };
+/** clearedAtMs 는 그 방을 /clear 한 시각. 그 전에 바뀐 문서는 없는 것(50, 오르기 간격 없음)으로 본다. */
+export type AffinityKey = { roomId: string; personaId: string; uid: string; clearedAtMs?: number | null };
 
 type Stamp = { toMillis?: () => number };
 type AffinityDoc = { score?: unknown; updatedAt?: Stamp; lastGainAt?: Stamp | null };
+
+/** /clear 이전 문서는 undefined 로 바꾼다. */
+function visibleDoc(data: AffinityDoc | undefined, clearedAtMs: number | null | undefined): AffinityDoc | undefined {
+  if (!data || typeof data.updatedAt?.toMillis !== "function") return data;
+  return clearedBefore(data.updatedAt.toMillis(), clearedAtMs ?? null) ? undefined : data;
+}
 
 function currentScore(data: AffinityDoc | undefined, now: number): number {
   if (!data || typeof data.score !== "number" || typeof data.updatedAt?.toMillis !== "function") return AFFINITY_DEFAULT;
@@ -15,7 +24,7 @@ function currentScore(data: AffinityDoc | undefined, now: number): number {
 /** 시간 복귀를 반영한 호감도(소수). 문서가 없으면 AFFINITY_DEFAULT. 쓰지 않는다. */
 export async function readAffinity(db: Firestore, key: AffinityKey & { now: number }): Promise<number> {
   const snap = await db.collection("affinity").doc(affinityDocId(key.roomId, key.personaId, key.uid)).get();
-  return currentScore(snap.exists ? (snap.data() as AffinityDoc) : undefined, key.now);
+  return currentScore(visibleDoc(snap.exists ? (snap.data() as AffinityDoc) : undefined, key.clearedAtMs), key.now);
 }
 
 /**
@@ -26,11 +35,11 @@ export async function applyAffinity(
   db: Firestore,
   key: AffinityKey & { pos: number; neg: number; now: number },
 ): Promise<{ score: number; delta: number }> {
-  const { roomId, personaId, uid, pos, neg, now } = key;
+  const { roomId, personaId, uid, pos, neg, now, clearedAtMs } = key;
   const ref = db.collection("affinity").doc(affinityDocId(roomId, personaId, uid));
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    const data = snap.exists ? (snap.data() as AffinityDoc) : undefined;
+    const data = visibleDoc(snap.exists ? (snap.data() as AffinityDoc) : undefined, clearedAtMs);
     const current = currentScore(data, now);
     const lastGain = data?.lastGainAt ?? null;
     const lastGainAtMs = typeof lastGain?.toMillis === "function" ? lastGain.toMillis() : null;

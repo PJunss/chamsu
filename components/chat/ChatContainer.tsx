@@ -7,6 +7,7 @@ import { useMessages } from "@/components/chat/useMessages";
 import { usePresence } from "@/components/chat/usePresence";
 import { useClaudeTyping } from "@/components/chat/useClaudeTyping";
 import { useAffinity } from "@/components/chat/useAffinity";
+import { useClearedAt } from "@/components/chat/useClearedAt";
 import { shownAffinity } from "@/lib/claude/affinity";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
@@ -40,10 +41,11 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
   const room = resolveRoom(roomId)!;
   const dmPersona = room.kind === "dm" ? findPersonaById(room.personaIds[0]) : null;
 
-  const { messages, loadOlder, hasOlder, offline } = useMessages(room.messagesPath);
+  const cleared = useClearedAt(room.kind === "dm" ? `rooms/${room.id}` : null);
+  const { messages, loadOlder, hasOlder, offline } = useMessages(room.messagesPath, cleared);
   const online = usePresence(uid, nickname);
   const typing = useClaudeTyping(room.jobsPath);
-  const affinity = useAffinity(room.id, uid);
+  const affinity = useAffinity(room.id, uid, cleared);
   const [claudeFailed, setClaudeFailed] = useState<string | null>(null);
   /** 늦게 도착한 호출 실패가 다른 방에 표시되지 않도록 지금 보고 있는 방 id 를 둔다. */
   const currentRoom = useRef(roomId);

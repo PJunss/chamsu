@@ -3,9 +3,18 @@ import type { Db } from "mongodb";
 import { MONGO_TEST_ENV, startMongo } from "./helpers/mongo";
 import { setMongoDbForTest } from "@/lib/mongo";
 import type { Firestore } from "firebase-admin/firestore";
+
+vi.mock("firebase-admin/firestore", async (importOriginal) => {
+  const real = await importOriginal<typeof import("firebase-admin/firestore")>();
+  return { ...real, FieldValue: { serverTimestamp: () => real.Timestamp.fromMillis(Date.now()) } };
+});
 import { createFakeFirestore, ts } from "./helpers/fakeFirestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { isClearCommand } from "@/lib/claude/clear";
 import { clearRoom } from "@/lib/claude/clearRoom";
+import { markCleared, readClearedAt } from "@/lib/claude/roomState";
+import { rememberSince } from "@/lib/claude/memory";
+import type { askJev as AskJev } from "@/lib/claude/jev";
 import { dmRoomId, resolveRoom } from "@/lib/claude/rooms";
 
 const OWNER = "n_" + "0123456789abcdef".repeat(2);
@@ -33,71 +42,89 @@ afterAll(async () => mongo?.stop());
 const memCol = () => mongo.db.collection<{ _id: string; roomId: string; text: string }>("er_dev_memories");
 const stateCol = () => mongo.db.collection<{ _id: string; lastJudgedAt: { seconds: number; nanoseconds: number } }>("er_dev_memoryState");
 const fdb = () => fake.db as unknown as Firestore;
+const T0 = Date.UTC(2026, 10, 12, 3, 0);
 beforeEach(async () => {
   fake = createFakeFirestore();
   setMongoDbForTest(mongo.db);
   vi.restoreAllMocks();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(T0);
   await memCol().deleteMany({});
   await stateCol().deleteMany({});
 });
 
-test("그 방의 메시지·작업·기억·기억 상태·호감도만 지우고 다른 방은 남긴다", async () => {
-  for (const r of [dm, otherDm, main]) {
-    fake.col(r.messagesPath).set("m1", { uid: OWNER, text: "x", createdAt: ts(1) });
-    fake.col(r.messagesPath).set("m2", { uid: "bot_bianca", text: "y", createdAt: ts(2) });
-    fake.col(r.jobsPath).set("m1_bianca", { status: "done" });
-    await memCol().insertOne({ _id: `${r.id}_m1`, roomId: r.id, text: "x" });
-    await stateCol().insertOne({ _id: r.id, lastJudgedAt: { seconds: 1, nanoseconds: 0 } });
-    fake.col("affinity").set(`${r.id}_bianca_${OWNER}`, { roomId: r.id, uid: OWNER, score: 70 });
-  }
-  const counts = await clearRoom(fdb(), dm, MONGO_TEST_ENV);
-  expect(counts).toEqual({ messages: 2, jobs: 1, memories: 1, affinity: 1 });
-  expect(fake.col(dm.messagesPath).size).toBe(0);
-  expect(fake.col(dm.jobsPath).size).toBe(0);
-  expect(await memCol().findOne({ _id: `${dm.id}_m1` })).toBeNull();
-  expect(await stateCol().findOne({ _id: dm.id })).toBeNull();
-  expect(fake.col("affinity").has(`${dm.id}_bianca_${OWNER}`)).toBe(false);
-  for (const r of [otherDm, main]) {
-    expect(fake.col(r.messagesPath).size).toBe(2);
-    expect(fake.col(r.jobsPath).size).toBe(1);
-    expect(await memCol().findOne({ _id: `${r.id}_m1` })).not.toBeNull();
-    expect(await stateCol().findOne({ _id: r.id })).not.toBeNull();
-    expect(fake.col("affinity").has(`${r.id}_bianca_${OWNER}`)).toBe(true);
-  }
+test("방 문서가 없으면 지운 시각은 null", async () => {
+  expect(await readClearedAt(fdb(), dm.id)).toBeNull();
+  fake.col("rooms").set(dm.id, { other: 1 });
+  expect(await readClearedAt(fdb(), dm.id)).toBeNull();
 });
 
-test("500개가 넘어도 모두 지운다", async () => {
-  for (let i = 0; i < 1203; i++) fake.col(dm.messagesPath).set(`m${i}`, { uid: OWNER, text: "x", createdAt: ts(i) });
-  const counts = await clearRoom(fdb(), dm, MONGO_TEST_ENV);
-  expect(counts.messages).toBe(1203);
-  expect(fake.col(dm.messagesPath).size).toBe(0);
+test("markCleared 는 서버 시각을 쓰고 저장된 값을 돌려준다", async () => {
+  const t = await markCleared(fdb(), dm.id);
+  expect(t.toMillis()).toBe(T0);
+  expect((await readClearedAt(fdb(), dm.id))?.toMillis()).toBe(T0);
 });
 
-test("빈 방도 지울 수 있다", async () => {
-  expect(await clearRoom(fdb(), dm, MONGO_TEST_ENV)).toEqual({ messages: 0, jobs: 0, memories: 0, affinity: 0 });
-});
-
-test("MongoDB 가 실패하면 Firestore 문서를 하나도 지우지 않고 throw 한다", async () => {
+test("/clear 는 문서를 지우지 않고 지운 시각을 쓰며 판정 상태를 그 시각으로 앞당긴다", async () => {
   fake.col(dm.messagesPath).set("m1", { uid: OWNER, text: "x", createdAt: ts(1) });
   fake.col(dm.jobsPath).set("m1_bianca", { status: "done" });
   fake.col("affinity").set(`${dm.id}_bianca_${OWNER}`, { roomId: dm.id, uid: OWNER, score: 70 });
   await memCol().insertOne({ _id: `${dm.id}_m1`, roomId: dm.id, text: "x" });
+  await stateCol().insertOne({ _id: dm.id, lastJudgedAt: { seconds: 1, nanoseconds: 0 } });
+  await stateCol().insertOne({ _id: otherDm.id, lastJudgedAt: { seconds: 1, nanoseconds: 0 } });
+  const { clearedAt } = await clearRoom(fdb(), dm, MONGO_TEST_ENV);
+  expect(clearedAt.toMillis()).toBe(T0);
+  expect(fake.col(dm.messagesPath).size).toBe(1);
+  expect(fake.col(dm.jobsPath).size).toBe(1);
+  expect(fake.col("affinity").size).toBe(1);
+  expect(await memCol().countDocuments()).toBe(1);
+  expect((await stateCol().findOne({ _id: dm.id }))?.lastJudgedAt).toEqual({
+    seconds: clearedAt.seconds, nanoseconds: clearedAt.nanoseconds,
+  });
+  expect((await stateCol().findOne({ _id: otherDm.id }))?.lastJudgedAt).toEqual({ seconds: 1, nanoseconds: 0 });
+});
+
+test("다시 /clear 하면 시각이 바뀐다", async () => {
+  await clearRoom(fdb(), dm, MONGO_TEST_ENV);
+  vi.setSystemTime(T0 + 60_000);
+  const second = await clearRoom(fdb(), dm, MONGO_TEST_ENV);
+  expect(second.clearedAt.toMillis()).toBe(T0 + 60_000);
+  expect((await readClearedAt(fdb(), dm.id))?.toMillis()).toBe(T0 + 60_000);
+});
+
+test("판정 상태가 이미 지운 시각보다 앞서 있으면 덮지 않는다", async () => {
+  await stateCol().insertOne({ _id: dm.id, lastJudgedAt: { seconds: Math.floor(T0 / 1000) + 100, nanoseconds: 0 } });
+  await clearRoom(fdb(), dm, MONGO_TEST_ENV);
+  expect((await stateCol().findOne({ _id: dm.id }))?.lastJudgedAt.seconds).toBe(Math.floor(T0 / 1000) + 100);
+});
+
+test("/clear 뒤 기억 판정은 지운 시각 이전 메시지를 다시 판정하지 않는다", async () => {
+  const msg = (id: string, text: string, ms: number) =>
+    fake.col(dm.messagesPath).set(id, { uid: OWNER, nickname: "현석", text, createdAt: Timestamp.fromMillis(ms) });
+  msg("old", "옛말", T0 - 5000);
+  await clearRoom(fdb(), dm, MONGO_TEST_ENV);
+  msg("new", "새말", T0 + 5000);
+  const askJev = vi.fn<typeof AskJev>(async () => ({}));
+  const env = { ...MONGO_TEST_ENV, TYPESAFE_API_KEY: "k" } as NodeJS.ProcessEnv;
+  expect(await rememberSince(fdb(), dm, Timestamp.fromMillis(T0 + 5000), { askJev, env })).toEqual({ judged: 1, saved: 0 });
+  expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("옛말");
+});
+
+test("MONGODB_URI 가 없으면 지운 시각만 쓴다", async () => {
+  setMongoDbForTest(null);
+  const { clearedAt } = await clearRoom(fdb(), dm, {} as NodeJS.ProcessEnv);
+  expect(clearedAt.toMillis()).toBe(T0);
+});
+
+test("판정 상태 앞당기기가 실패하면 throw 한다(지운 시각은 이미 쓰여 있다)", async () => {
   const original = mongo.db.collection.bind(mongo.db);
   vi.spyOn(mongo.db, "collection").mockImplementation(((name: string) => {
     const c = original(name);
-    if (name === "er_dev_memories") {
-      return Object.assign(Object.create(c), { deleteMany: async () => Promise.reject(new Error("atlas down")) });
+    if (name === "er_dev_memoryState") {
+      return Object.assign(Object.create(c), { updateOne: async () => Promise.reject(new Error("atlas down")) });
     }
     return c;
   }) as typeof mongo.db.collection);
   await expect(clearRoom(fdb(), dm, MONGO_TEST_ENV)).rejects.toThrow("atlas down");
-  expect(fake.col(dm.messagesPath).size).toBe(1);
-  expect(fake.col(dm.jobsPath).size).toBe(1);
-  expect(fake.col("affinity").size).toBe(1);
-});
-
-test("MONGODB_URI 가 없으면 Firestore 만 지운다", async () => {
-  setMongoDbForTest(null);
-  fake.col(dm.messagesPath).set("m1", { uid: OWNER, text: "x", createdAt: ts(1) });
-  expect(await clearRoom(fdb(), dm, {} as NodeJS.ProcessEnv)).toEqual({ messages: 1, jobs: 0, memories: 0, affinity: 0 });
+  expect((await readClearedAt(fdb(), dm.id))?.toMillis()).toBe(T0);
 });

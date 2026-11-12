@@ -17,7 +17,7 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const answer = vi.fn<(input: AnswerInput) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
-const recallMemories = vi.fn<(room: Room, asker: string, question: string) => Promise<Memory[]>>();
+const recallMemories = vi.fn<(room: Room, asker: string, question: string, deps?: unknown) => Promise<Memory[]>>();
 const rememberSince = vi.fn<(db: unknown, room: Room, until: unknown) => Promise<{ judged: number; saved: number }>>();
 const sleep = vi.fn<(ms: number) => Promise<void>>();
 
@@ -26,7 +26,7 @@ vi.mock("@/lib/claude/limits", () => ({
   consumeClaudeQuota: (uid: string, now: number) => consumeClaudeQuota(uid, now),
 }));
 vi.mock("@/lib/claude/memory", () => ({
-  recallMemories: (room: Room, asker: string, question: string) => recallMemories(room, asker, question),
+  recallMemories: (room: Room, asker: string, question: string, deps?: unknown) => recallMemories(room, asker, question, deps),
   rememberSince: (db: unknown, room: Room, until: unknown) => rememberSince(db, room, until),
 }));
 vi.mock("@/lib/claude/sleep", () => ({ sleep: (ms: number) => sleep(ms) }));
@@ -660,7 +660,7 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     fake.col("affinity").set(`main_bianca_${OWNER}`, { roomId: "main", personaId: "bianca", uid: OWNER, score: 70, updatedAt: ts(NOW) });
   };
 
-  test("주인의 /clear 는 방을 지우고 처음 만난 것처럼 인사 한 줄을 쓴다", async () => {
+  test("주인의 /clear 는 문서를 지우지 않고 방에 지운 시각을 쓴 뒤 처음 만난 것처럼 인사한다", async () => {
     seedRoom();
     answer.mockResolvedValue("흐흥, 처음 보는 얼굴이로구나.");
     putMessage("c1", OWNER, "현석", " /clear ", NOW - 1000, DM_MESSAGES);
@@ -670,10 +670,12 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     expect(sleep).not.toHaveBeenCalled();
     expect(guardScore).not.toHaveBeenCalled();
     expect(rememberSince).not.toHaveBeenCalled();
-    expect(fake.col(DM_JOBS).size).toBe(0);
-    expect(fake.col("affinity").has(`${DM}_bianca_${OWNER}`)).toBe(false);
-    expect(fake.col("affinity").has(`main_bianca_${OWNER}`)).toBe(true);
-    expect([...fake.col(DM_MESSAGES).values()]).toEqual([
+    expect((fake.col("rooms").get(DM)?.clearedAt as { toMillis: () => number }).toMillis()).toBe(NOW);
+    expect(fake.col(DM_JOBS).size).toBe(1);
+    expect(fake.col("affinity").has(`${DM}_bianca_${OWNER}`)).toBe(true);
+    expect(fake.col(DM_MESSAGES).has("old1")).toBe(true);
+    expect(fake.col(DM_MESSAGES).has("c1")).toBe(true);
+    expect(botReplies(DM_MESSAGES).filter((m) => m.replyTo === "c1")).toEqual([
       {
         text: "흐흥, 처음 보는 얼굴이로구나.",
         nickname: "비앙카",
@@ -689,17 +691,55 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     expect(input.affinity).toEqual({ nickname: "현석", score: 50 });
     expect(input.history).toEqual([]);
     expect(input.memories).toEqual([]);
-    expect(console.log).toHaveBeenCalledWith("claude clear", `room=${DM}`, "messages=3", "memories=0", "affinity=1");
+    expect(console.log).toHaveBeenCalledWith("claude clear", `room=${DM}`, `clearedAt=${NOW}`);
   });
 
-  test("인사를 만들지 못하면 빈 방으로 두고 200", async () => {
+  test("다시 /clear 하면 지운 시각이 바뀐다", async () => {
+    putMessage("c1", OWNER, "현석", "/clear", NOW - 1000, DM_MESSAGES);
+    await POST(req({ roomId: DM, messageId: "c1" }));
+    vi.setSystemTime(NOW + 5000);
+    putMessage("c2", OWNER, "현석", "/clear", NOW + 4000, DM_MESSAGES);
+    await POST(req({ roomId: DM, messageId: "c2" }));
+    expect((fake.col("rooms").get(DM)?.clearedAt as { toMillis: () => number }).toMillis()).toBe(NOW + 5000);
+  });
+
+  test("인사를 만들지 못하면 아무것도 쓰지 않고 200", async () => {
     seedRoom();
     answer.mockRejectedValue(new Error("boom"));
     putMessage("c1", OWNER, "현석", "/clear", NOW - 1000, DM_MESSAGES);
     const res = await POST(req({ roomId: DM, messageId: "c1" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cleared: true });
-    expect(fake.col(DM_MESSAGES).size).toBe(0);
+    expect(fake.col(DM_MESSAGES).size).toBe(3);
+    expect(fake.col("rooms").get(DM)?.clearedAt).toBeDefined();
+  });
+
+  test("/clear 뒤 질문은 지운 시각 이후 대화·기억·호감도만 쓴다", async () => {
+    seedRoom();
+    fake.col("rooms").set(DM, { clearedAt: ts(NOW - 10_000) });
+    fake.col("affinity").set(`${DM}_bianca_${OWNER}`, { roomId: DM, personaId: "bianca", uid: OWNER, score: 90, updatedAt: ts(NOW - 20_000) });
+    putMessage("new1", OWNER, "현석", "새 말", NOW - 5000, DM_MESSAGES);
+    putMessage("d1", OWNER, "현석", "오늘 뭐하지", NOW - 1000, DM_MESSAGES);
+    expect((await POST(req({ roomId: DM, messageId: "d1" }))).status).toBe(200);
+    const input = answer.mock.calls[0][0];
+    expect(input.history.map((m) => m.id)).toEqual(["new1", "d1"]);
+    expect(input.affinity).toEqual({ nickname: "현석", score: 50 });
+    expect(recallMemories.mock.calls[0][3]).toEqual({ clearedAt: fake.col("rooms").get(DM)!.clearedAt });
+  });
+
+  test("방 문서가 없으면 조건 없이 대화 기록을 읽고 호감도도 그대로 쓴다", async () => {
+    seedRoom();
+    putMessage("d1", OWNER, "현석", "오늘 뭐하지", NOW - 1000, DM_MESSAGES);
+    await POST(req({ roomId: DM, messageId: "d1" }));
+    const input = answer.mock.calls[0][0];
+    expect(input.history.map((m) => m.id)).toEqual(["old1", "old2", "d1"]);
+    expect(input.affinity).toEqual({ nickname: "현석", score: 90 });
+    expect(recallMemories.mock.calls[0][3]).toEqual({ clearedAt: null });
+  });
+
+  test("단체방 요청은 방 문서를 읽지 않는다", async () => {
+    expect((await POST(req({ messageId: "q" }))).status).toBe(200);
+    expect(fake.reads).not.toContain("rooms");
   });
 
   test("주인이 아닌 사람의 /clear 는 지우지 않는다", async () => {

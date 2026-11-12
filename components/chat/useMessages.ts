@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  collection, getDocs, limit, onSnapshot, orderBy, query, startAfter,
-  type QueryDocumentSnapshot,
+  collection, getDocs, limit, onSnapshot, orderBy, query, startAfter, where,
+  type QueryConstraint, type QueryDocumentSnapshot, type Timestamp,
 } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
 import { applySnapshot, mergeWindow, prependOlder, type MessageWindow } from "@/lib/messageWindow";
@@ -36,9 +36,20 @@ function toMessage(d: QueryDocumentSnapshot): ChatMessage {
 
 const EMPTY: MessageWindow<ChatMessage> = { older: [], latest: [] };
 
-/** messagesPath 컬렉션의 최근 메시지를 구독한다. 경로가 바뀌면 창 상태를 비우고 다시 구독한다. */
-export function useMessages(messagesPath: string) {
-  const [path, setPath] = useState(messagesPath);
+/** clearedAt 이 있으면 그 시각 뒤 메시지만 본다. */
+function afterCleared(clearedAt: Timestamp | null): QueryConstraint[] {
+  return clearedAt ? [where("createdAt", ">", clearedAt)] : [];
+}
+
+/**
+ * messagesPath 컬렉션의 최근 메시지를 구독한다. cleared 가 ready 가 아니면 구독하지 않고,
+ * clearedAt 이 있으면 그 시각 뒤 메시지만 구독하고 지난 메시지 더 보기도 그 시각에서 멈춘다.
+ * 경로나 clearedAt 이 바뀌면 창 상태를 비우고 다시 구독한다.
+ */
+export function useMessages(messagesPath: string, cleared: { ready: boolean; clearedAt: Timestamp | null }) {
+  const { ready, clearedAt } = cleared;
+  const viewKey = `${messagesPath}|${ready ? (clearedAt ? `${clearedAt.seconds}.${clearedAt.nanoseconds}` : "all") : "wait"}`;
+  const [path, setPath] = useState(viewKey);
   const [win, setWin] = useState(EMPTY);
   const [windowFull, setWindowFull] = useState(false);
   const [exhausted, setExhausted] = useState(false);
@@ -48,8 +59,8 @@ export function useMessages(messagesPath: string) {
   /** 경로가 바뀔 때마다 늘어난다. 이전 방에서 시작한 loadOlder 결과를 버리는 데 쓴다. */
   const generation = useRef(0);
 
-  if (path !== messagesPath) {
-    setPath(messagesPath);
+  if (path !== viewKey) {
+    setPath(viewKey);
     setWin(EMPTY);
     setWindowFull(false);
     setExhausted(false);
@@ -59,7 +70,13 @@ export function useMessages(messagesPath: string) {
     generation.current += 1;
     loading.current = false;
     snapshots.current = new Map();
-    const q = query(collection(getClientDb(), messagesPath), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+    if (!ready) return;
+    const q = query(
+      collection(getClientDb(), messagesPath),
+      ...afterCleared(clearedAt),
+      orderBy("createdAt", "desc"),
+      limit(PAGE_SIZE),
+    );
     return onSnapshot(
       q,
       { includeMetadataChanges: true },
@@ -71,7 +88,7 @@ export function useMessages(messagesPath: string) {
       },
       () => setOffline(true),
     );
-  }, [messagesPath]);
+  }, [messagesPath, ready, clearedAt]);
 
   const messages = mergeWindow(win);
   const oldestId = messages[0]?.id;
@@ -84,6 +101,7 @@ export function useMessages(messagesPath: string) {
     try {
       const q = query(
         collection(getClientDb(), messagesPath),
+        ...afterCleared(clearedAt),
         orderBy("createdAt", "desc"),
         startAfter(cursor),
         limit(PAGE_SIZE),
@@ -96,7 +114,7 @@ export function useMessages(messagesPath: string) {
     } finally {
       if (gen === generation.current) loading.current = false;
     }
-  }, [oldestId, messagesPath]);
+  }, [oldestId, messagesPath, clearedAt]);
 
   const hasOlder = !exhausted && (windowFull || win.older.length > 0);
 

@@ -206,3 +206,30 @@ test("위협 표현이 있고 Jev 협박 점수가 0.1 이상이면 호의 0, �
   expect(affinityScores({ pos: 0.5, neg: 0.2, threat: 0.9 }, "오늘 노래 좋다", false)).toEqual({ pos: 0.5, neg: 0.2 });
   expect(affinityDelta(50, 0, 0.7, null, T0)).toBeCloseTo(-1.05, 10);
 });
+
+test("지운 시각 이전에 바뀐 문서는 없는 것(50, 오르기 간격 없음)으로 보고 50 에서 다시 시작한다", async () => {
+  fake.col("affinity").set("main_bianca_n_a", {
+    ...key, score: 90, updatedAt: Timestamp.fromMillis(T0), lastGainAt: Timestamp.fromMillis(T0),
+  });
+  const clearedAtMs = T0 + 1000;
+  expect(await readAffinity(db(), { ...key, now: T0 + 2000, clearedAtMs })).toBe(50);
+  expect(await readAffinity(db(), { ...key, now: T0 + 2000, clearedAtMs: T0 - 1 })).toBeCloseTo(90, 3);
+  const r = await applyAffinity(db(), { ...key, pos: 0.98, neg: 0, now: T0 + 2000, clearedAtMs });
+  expect(r.score).toBeCloseTo(50.49, 10);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0 + 2000));
+});
+
+test("화면 점수도 지운 시각 이전 문서는 빼서 50 으로 보인다", async () => {
+  const { affinityByPersona, shownAffinity, clearedBefore } = await import("@/lib/claude/affinity");
+  const rows = [
+    { personaId: "bianca", score: 90, updatedAtMs: T0 },
+    { personaId: "lucia", score: 30, updatedAtMs: T0 + 2000 },
+  ];
+  const scores = affinityByPersona(rows, T0 + 3000, T0 + 1000);
+  expect(scores).toEqual({ lucia: 30 });
+  expect(shownAffinity(scores, "bianca")).toBe(50);
+  expect(affinityByPersona(rows, T0 + 3000, null)).toEqual({ bianca: 89, lucia: 30 });
+  expect(clearedBefore(T0, T0)).toBe(true);
+  expect(clearedBefore(T0 + 1, T0)).toBe(false);
+  expect(clearedBefore(T0, null)).toBe(false);
+});
