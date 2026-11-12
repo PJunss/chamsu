@@ -28,7 +28,10 @@ export function buildSystemPrompt(
   if (room.kind === "group") {
     const others = list.filter((p) => p.id !== persona.info.id && room.personaIds.includes(p.id)).map((p) => p.nickname);
     if (others.length > 0) {
-      rules.push(`이 방에는 다른 봇 ${others.join(", ")}도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.`);
+      rules.push(
+        `이 방에는 다른 봇 ${others.join(", ")}도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.`,
+        `대화 기록에 있는 ${others.join(", ")}의 말투, 말버릇, 감탄사, 호칭을 따라 하지 않는다. 위 캐릭터 설명의 말투만 쓴다.`,
+      );
     }
   }
   if (persona.useMemory !== false) {

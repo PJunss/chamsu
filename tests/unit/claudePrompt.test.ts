@@ -56,6 +56,7 @@ test("단체방에는 자기 말고 다른 봇을 부르는 규칙이 있다", (
   const p = buildSystemPrompt(main, bianca);
   expect(p).toContain('- 이 방에는 다른 봇 루치아도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.');
   expect(p).not.toMatch(/다른 봇 [^\n]*비앙카/);
+  expect(p).toContain("- 대화 기록에 있는 루치아의 말투, 말버릇, 감탄사, 호칭을 따라 하지 않는다. 위 캐릭터 설명의 말투만 쓴다.");
 });
 
 test("다른 봇이 여럿이면 쉼표로 잇고, 방에 없는 봇은 넣지 않는다", () => {
