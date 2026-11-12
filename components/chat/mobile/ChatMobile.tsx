@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { MessageInput } from "@/components/chat/MessageInput";
-import { MessageList, type ChatViewProps } from "@/components/chat/MessageList";
+import { AffinityBadge, MessageList, type ChatViewProps } from "@/components/chat/MessageList";
 import { PresenceList } from "@/components/chat/PresenceList";
 import { RoomList } from "@/components/chat/RoomList";
 
@@ -24,7 +24,10 @@ export function ChatMobile(p: ChatViewProps) {
           <button type="button" onClick={p.backToList} className="text-sm text-zinc-500">
             ‹ 목록
           </button>
-          <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{p.roomTitle}</h1>
+          <h1 className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold">
+            <span className="truncate">{p.roomTitle}</span>
+            {p.titleAffinity !== null && <AffinityBadge score={p.titleAffinity} />}
+          </h1>
           {p.isGroup && (
             <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-semibold text-zinc-500">
               접속 {p.online.length}명 {open ? "▲" : "▼"}
@@ -44,6 +47,7 @@ export function ChatMobile(p: ChatViewProps) {
         hasOlder={p.hasOlder}
         loadOlder={p.loadOlder}
         typing={p.typing}
+        affinity={p.affinity}
       />
       <MessageInput
         key={`input-${p.roomId}`}

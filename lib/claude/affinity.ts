@@ -42,3 +42,17 @@ export function affinityBand(score: number): 0 | 1 | 2 | 3 | 4 {
 export function clampAffinity(score: number): number {
   return Math.min(100, Math.max(0, score));
 }
+
+export type AffinityRow = { personaId: string; score: number; updatedAtMs: number };
+
+/** 화면에 보일 페르소나별 호감도(복귀 반영, 버린 정수). 문서가 없는 페르소나는 넣지 않는다. */
+export function affinityByPersona(rows: readonly AffinityRow[], nowMs: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.personaId] = displayAffinity(effectiveAffinity(r.score, r.updatedAtMs, nowMs));
+  return out;
+}
+
+/** 화면에 보일 한 페르소나의 호감도. 문서가 없으면 AFFINITY_DEFAULT. */
+export function shownAffinity(scores: Readonly<Record<string, number>>, personaId: string): number {
+  return scores[personaId] ?? AFFINITY_DEFAULT;
+}

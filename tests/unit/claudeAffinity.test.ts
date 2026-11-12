@@ -88,3 +88,18 @@ test("복귀를 반영한 값에서 계산하고 0~100 으로 자른다", async 
   expect(low.delta).toBe(-1);
   expect(fake.col("affinity").get("main_bianca_n_a")?.score).toBe(0);
 });
+
+test("화면 점수: 페르소나별로 복귀를 반영해 버린 정수, 문서가 없으면 50", async () => {
+  const { affinityByPersona, shownAffinity } = await import("@/lib/claude/affinity");
+  const scores = affinityByPersona(
+    [
+      { personaId: "bianca", score: 49.6, updatedAtMs: T0 },
+      { personaId: "lucia", score: 80, updatedAtMs: T0 - 2 * DAY },
+    ],
+    T0,
+  );
+  expect(scores).toEqual({ bianca: 49, lucia: 79 });
+  expect(shownAffinity(scores, "bianca")).toBe(49);
+  expect(shownAffinity(scores, "nobody")).toBe(50);
+  expect(affinityByPersona([], T0)).toEqual({});
+});

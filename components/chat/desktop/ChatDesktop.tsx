@@ -19,6 +19,7 @@ export function ChatDesktop(p: ChatViewProps) {
           hasOlder={p.hasOlder}
           loadOlder={p.loadOlder}
           typing={p.typing}
+          affinity={p.affinity}
         />
         <MessageInput
           key={`input-${p.roomId}`}

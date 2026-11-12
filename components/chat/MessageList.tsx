@@ -7,6 +7,7 @@ import { isNearBottom } from "@/lib/scroll";
 import { BotAvatar } from "@/components/chat/BotAvatar";
 import { findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
 import type { RoomItem } from "@/lib/claude/roomList";
+import { shownAffinity } from "@/lib/claude/affinity";
 
 export type ChatViewProps = {
   me: string;
@@ -18,6 +19,10 @@ export type ChatViewProps = {
   send: (text: string) => Promise<boolean>;
   /** 지금 방에서 답을 쓰는 중인 페르소나 */
   typing: PersonaInfo[];
+  /** 지금 방에서 내 호감도, 페르소나 id → 화면 점수. 문서가 없는 페르소나는 빠져 있다 */
+  affinity: Record<string, number>;
+  /** 1:1 방이면 그 방 페르소나의 화면 호감도, 단체방이면 null */
+  titleAffinity: number | null;
   /** 호출에 실패한 페르소나 닉네임. 없으면 null */
   claudeFailed: string | null;
   rooms: RoomItem[];
@@ -31,6 +36,15 @@ export type ChatViewProps = {
   backToList: () => void;
 };
 
+/** 호감도 표시 `♥ {점수}`. */
+export function AffinityBadge({ score }: { score: number }) {
+  return (
+    <span className="text-[10px] leading-4 text-rose-400" aria-label={`호감도 ${score}`}>
+      ♥ {score}
+    </span>
+  );
+}
+
 const timeFmt = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
 export function MessageList({
@@ -39,7 +53,8 @@ export function MessageList({
   hasOlder,
   loadOlder,
   typing,
-}: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder" | "typing">) {
+  affinity,
+}: Pick<ChatViewProps, "me" | "messages" | "hasOlder" | "loadOlder" | "typing" | "affinity">) {
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const prevHeight = useRef<number | null>(null);
@@ -97,6 +112,7 @@ export function MessageList({
                 <span className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
                   {m.nickname}
                   {bot && <span className="rounded border border-zinc-300 px-1 text-[10px] leading-4 text-zinc-400">봇</span>}
+                  {bot && <AffinityBadge score={shownAffinity(affinity, bot.id)} />}
                 </span>
               )}
               <div className="flex items-end gap-1.5">
