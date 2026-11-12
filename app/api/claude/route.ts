@@ -10,6 +10,7 @@ import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
+import { affinityNeg } from "@/lib/claude/affinity";
 import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
@@ -213,7 +214,8 @@ export async function POST(req: Request) {
           let score: number;
           try {
             if (checked && "guard" in checked) {
-              const r = await applyAffinity(db, { ...key, pos: checked.pos, neg: checked.neg });
+              const neg = affinityNeg(checked.neg, typeof q.text === "string" ? q.text : "", guarded);
+              const r = await applyAffinity(db, { ...key, pos: checked.pos, neg });
               score = r.score;
               timing.note("affinity_delta", r.delta.toFixed(3));
             } else {

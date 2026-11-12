@@ -178,3 +178,15 @@ test("startsGainCooldown: 호의 0.5 이상이고 실제로 올랐을 때만", a
   expect(startsGainCooldown(0.97, 0)).toBe(false);
   expect(startsGainCooldown(0.97, -1)).toBe(false);
 });
+
+test("웃음 표시가 있으면 적대 점수를 절반으로 보되, 가드레일에 걸린 메시지는 줄이지 않는다", async () => {
+  const { affinityNeg, hasLaugh } = await import("@/lib/claude/affinity");
+  expect(hasLaugh("ㅋㅋ 바보야")).toBe(true);
+  expect(hasLaugh("바보야 ㅎㅎ")).toBe(true);
+  expect(hasLaugh("뒤질래?")).toBe(false);
+  expect(affinityNeg(0.8, "ㅋㅋ 바보야", false)).toBeCloseTo(0.4, 10);
+  expect(affinityNeg(0.64, "뒤질래?", false)).toBe(0.64);
+  expect(affinityNeg(0.9, "ㅋㅋ 병신아", true)).toBe(0.9);
+  expect(affinityDelta(50, 0, affinityNeg(0.8, "ㅋㅋ 바보야", false), null, T0)).toBe(0);
+  expect(affinityDelta(50, 0, affinityNeg(0.64, "뒤질래?", false), null, T0)).toBeCloseTo(-0.96, 10);
+});

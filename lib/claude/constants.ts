@@ -33,6 +33,8 @@ export const AFFINITY_GAIN_COOLDOWN_MS = 10 * 60_000;
 export const AFFINITY_NOISE = 0.1;
 /** 적대 점수가 이보다 낮으면 밈·장난으로 보고 호감도를 깎지 않는다. */
 export const AFFINITY_NEG_MIN = 0.55;
+/** 웃음 표시(ㅋㅋ·ㅎㅎ 등)가 있는 메시지의 적대 점수에 곱하는 값. 가드레일에 걸린 메시지에는 쓰지 않는다. */
+export const AFFINITY_LAUGH_FACTOR = 0.5;
 /** 호의 점수가 이 값 이상으로 올랐을 때만 AFFINITY_GAIN_COOLDOWN_MS 간격을 새로 시작한다. */
 export const AFFINITY_GAIN_MIN = 0.5;
 export const DM_SETTLE_MS = 1_500;
