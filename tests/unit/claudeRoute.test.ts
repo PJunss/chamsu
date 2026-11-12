@@ -17,7 +17,7 @@ vi.mock("firebase-admin/firestore", () => ({
 
 const answer = vi.fn<(input: AnswerInput) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
-const recallMemories = vi.fn<(db: unknown, room: Room, asker: string, question: string) => Promise<Memory[]>>();
+const recallMemories = vi.fn<(room: Room, asker: string, question: string) => Promise<Memory[]>>();
 const rememberSince = vi.fn<(db: unknown, room: Room, until: unknown) => Promise<{ judged: number; saved: number }>>();
 const sleep = vi.fn<(ms: number) => Promise<void>>();
 
@@ -26,7 +26,7 @@ vi.mock("@/lib/claude/limits", () => ({
   consumeClaudeQuota: (uid: string, now: number) => consumeClaudeQuota(uid, now),
 }));
 vi.mock("@/lib/claude/memory", () => ({
-  recallMemories: (db: unknown, room: Room, asker: string, question: string) => recallMemories(db, room, asker, question),
+  recallMemories: (room: Room, asker: string, question: string) => recallMemories(room, asker, question),
   rememberSince: (db: unknown, room: Room, until: unknown) => rememberSince(db, room, until),
 }));
 vi.mock("@/lib/claude/sleep", () => ({ sleep: (ms: number) => sleep(ms) }));
@@ -162,8 +162,7 @@ describe("POST /api/claude 단체방", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, personas: ["bianca"] });
     expect(sleep).not.toHaveBeenCalled();
-    const [db, room, asker, question] = recallMemories.mock.calls[0];
-    expect(db).toBe(fake.db);
+    const [room, asker, question] = recallMemories.mock.calls[0];
     expect(room.id).toBe("main");
     expect(asker).toBe("철수");
     expect(question).toBe("@비앙카 안녕");
@@ -745,7 +744,7 @@ describe("POST /api/claude 1:1 방", () => {
     const input = answer.mock.calls[0][0];
     expect(input.room.id).toBe(DM);
     expect(input.history.map((m) => m.id)).toEqual(["d0", "d1"]);
-    expect(recallMemories.mock.calls[0][3]).toBe("오늘 뭐하지");
+    expect(recallMemories.mock.calls[0][2]).toBe("오늘 뭐하지");
     expect(botReplies(DM_MESSAGES)).toEqual([
       expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "bot_bianca", replyTo: "d1" }),
     ]);

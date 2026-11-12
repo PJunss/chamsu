@@ -1,11 +1,14 @@
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { createFakeFirestore } from "./helpers/fakeFirestore";
+import { startMongo } from "./helpers/mongo";
+import type { Db } from "mongodb";
+import type { MemoryDoc, MemoryStateDoc } from "@/lib/claude/memory";
 import { judgeRange, pickMemories, recallMemories, rememberSince, type StoredMemory } from "@/lib/claude/memory";
 import { resolveRoom } from "@/lib/claude/rooms";
 import type { askJev as AskJev } from "@/lib/claude/jev";
 
-const env = { TYPESAFE_API_KEY: "key-test" } as unknown as NodeJS.ProcessEnv;
+const env = { TYPESAFE_API_KEY: "key-test", MONGODB_URI: "mongodb://memory.test/chamsu" } as unknown as NodeJS.ProcessEnv;
 const UID = "n_" + "0123456789abcdef".repeat(2);
 const main = resolveRoom("main")!;
 const dm = resolveRoom(`dm_bianca_${UID}`)!;
@@ -13,8 +16,27 @@ const T0 = Date.UTC(2026, 10, 11, 3, 0);
 
 let fake: ReturnType<typeof createFakeFirestore>;
 const db = () => fake.db as unknown as Firestore;
-beforeEach(() => {
+let mongo: { db: Db; stop: () => Promise<void> };
+beforeAll(async () => {
+  mongo = await startMongo("claude_memory");
+}, 120_000);
+afterAll(async () => mongo?.stop());
+const memCol = () => mongo.db.collection<MemoryDoc>("er_dev_memories");
+const stateCol = () => mongo.db.collection<MemoryStateDoc>("er_dev_memoryState");
+const memIds = async () => (await memCol().find().sort({ _id: 1 }).toArray()).map((d) => d._id);
+const memDoc = async (id: string) => memCol().findOne({ _id: id });
+const setState = (roomId: string, t: Timestamp) =>
+  stateCol().replaceOne({ _id: roomId }, { lastJudgedAt: { seconds: t.seconds, nanoseconds: t.nanoseconds } }, { upsert: true });
+const stateOf = async (roomId: string) => (await stateCol().findOne({ _id: roomId }))?.lastJudgedAt;
+const stateMs = async (roomId: string) => {
+  const s = await stateOf(roomId);
+  return s ? new Timestamp(s.seconds, s.nanoseconds).toMillis() : undefined;
+};
+
+beforeEach(async () => {
   fake = createFakeFirestore();
+  await memCol().deleteMany({});
+  await stateCol().deleteMany({});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -113,40 +135,40 @@ test("rememberSince: 0.6 이상만 원문 그대로 저장하고 lastJudgedAt �
   });
   expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("기억하마");
   expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("나중 말");
-  const saved = fake.col("memories");
-  expect([...saved.keys()]).toEqual(["main_m2"]);
-  const doc = saved.get("main_m2")!;
+  expect(await memIds()).toEqual(["main_m2"]);
+  const doc = await memDoc("main_m2");
   expect(doc).toEqual({
+    _id: "main_m2",
     text: "내 생일 3월 14일임",
     nickname: "현석",
     uid: "b",
     context: ["민수: 생일 언제야?"],
     roomId: "main",
     messageId: "m2",
-    createdAt: expect.anything(),
+    createdAt: expect.any(Date),
     score: 0.6,
   });
-  expect((doc.createdAt as Timestamp).toMillis()).toBe(T0 + 1000);
-  expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 + 3000);
+  expect(doc!.createdAt).toEqual(new Date(T0 + 1000));
+  expect((await stateMs("main"))).toBe(T0 + 3000);
 });
 
 test("rememberSince: 지난 판단 이후만 읽고, lastJudgedAt 은 줄지 않는다", async () => {
   putMsg("messages", "m1", "a", "민수", "옛말", T0);
   putMsg("messages", "m2", "a", "민수", "새말", T0 + 1000);
-  fake.col("memoryState").set("main", { lastJudgedAt: Timestamp.fromMillis(T0) });
+  await setState("main", Timestamp.fromMillis(T0));
   const askJev = fakeJev({});
   expect(await rememberSince(db(), main, Timestamp.fromMillis(T0 + 1000), { askJev, env })).toEqual({ judged: 1, saved: 0 });
   expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("옛말");
-  expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 + 1000);
+  expect((await stateMs("main"))).toBe(T0 + 1000);
 });
 
 test("rememberSince: 범위가 비면 아무것도 쓰지 않는다", async () => {
-  fake.col("memoryState").set("main", { lastJudgedAt: Timestamp.fromMillis(T0) });
+  await setState("main", Timestamp.fromMillis(T0));
   putMsg("messages", "m1", "a", "민수", "옛말", T0);
   const askJev = fakeJev({});
   expect(await rememberSince(db(), main, Timestamp.fromMillis(T0), { askJev, env })).toEqual({ judged: 0, saved: 0 });
   expect(askJev).not.toHaveBeenCalled();
-  expect(fake.col("memories").size).toBe(0);
+  expect(await memIds()).toEqual([]);
 });
 
 test("rememberSince: 600개는 300개씩 두 번 판단한다", async () => {
@@ -158,20 +180,20 @@ test("rememberSince: 600개는 300개씩 두 번 판단한다", async () => {
   expect(Object.keys(askJev.mock.calls[1][1])).toHaveLength(300);
   expect(r.judged).toBe(600);
   expect(JSON.stringify(askJev.mock.calls)).not.toContain('"민수: 말49"');
-  expect([...fake.col("memories").keys()]).toEqual(["main_m60"]);
-  expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 + 649);
+  expect(await memIds()).toEqual(["main_m60"]);
+  expect((await stateMs("main"))).toBe(T0 + 649);
 });
 
 test("rememberSince: 두 번째 묶음이 실패하면 memoryState 를 그대로 두고 throw", async () => {
   for (let i = 0; i < 600; i++) putMsg("messages", `m${i}`, "a", "민수", `말${i}`, T0 + i);
-  fake.col("memoryState").set("main", { lastJudgedAt: Timestamp.fromMillis(T0 - 1) });
+  await setState("main", Timestamp.fromMillis(T0 - 1));
   let n = 0;
   const askJev = vi.fn<typeof AskJev>(async () => {
     if (++n === 2) throw new Error("jev_500");
     return {};
   });
   await expect(rememberSince(db(), main, Timestamp.fromMillis(T0 + 599), { askJev, env })).rejects.toThrow("jev_500");
-  expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 - 1);
+  expect((await stateMs("main"))).toBe(T0 - 1);
 });
 
 test("rememberSince: 1:1 방은 그 방 메시지만 읽고 그 방 id 로 저장한다", async () => {
@@ -181,10 +203,10 @@ test("rememberSince: 1:1 방은 그 방 메시지만 읽고 그 방 id 로 저�
   await rememberSince(db(), dm, Timestamp.fromMillis(T0), { askJev, env });
   expect(askJev.mock.calls[0][0]).toBe(dm.judgeState);
   expect(JSON.stringify(askJev.mock.calls)).not.toContain("단체방 말");
-  expect([...fake.col("memories").keys()]).toEqual([`${dm.id}_d1`]);
-  expect(fake.col("memories").get(`${dm.id}_d1`)!.roomId).toBe(dm.id);
+  expect(await memIds()).toEqual([`${dm.id}_d1`]);
+  expect((await memDoc(`${dm.id}_d1`))!.roomId).toBe(dm.id);
   expect(fake.reads).not.toContain("messages");
-  expect(fake.col("memoryState").has(dm.id)).toBe(true);
+  expect(await stateOf(dm.id)).toBeDefined();
 });
 
 test("rememberSince: 키가 없으면 아무것도 하지 않는다", async () => {
@@ -194,15 +216,15 @@ test("rememberSince: 키가 없으면 아무것도 하지 않는다", async () =
   expect(askJev).not.toHaveBeenCalled();
 });
 
-function putMemory(id: string, roomId: string, nickname: string, text: string, ms: number, context: string[] = []) {
-  fake.col("memories").set(id, { text, nickname, uid: "x", context, roomId, messageId: id, createdAt: Timestamp.fromMillis(ms), score: 0.9 });
+async function putMemory(id: string, roomId: string, nickname: string, text: string, ms: number, context: string[] = []) {
+  await memCol().insertOne({ _id: id, text, nickname, uid: "x", context, roomId, messageId: id, createdAt: new Date(ms), score: 0.9 });
 }
 
 test("recallMemories: 그 방 기억만 후보로 보내고 고른 것을 오래된 순으로", async () => {
-  putMemory("a", "main", "현석", "생일 3월 14일", T0, ["민수: 생일?"]);
-  putMemory("b", "main", "영희", "고수 싫어", T0 + 1000);
-  putMemory("c", "main", "철수", "이사 감", T0 + 2000);
-  putMemory("z", dm.id, "현석", "비밀 얘기", T0 + 3000);
+  await putMemory("a", "main", "현석", "생일 3월 14일", T0, ["민수: 생일?"]);
+  await putMemory("b", "main", "영희", "고수 싫어", T0 + 1000);
+  await putMemory("c", "main", "철수", "이사 감", T0 + 2000);
+  await putMemory("z", dm.id, "현석", "비밀 얘기", T0 + 3000);
   const askJev = vi.fn<typeof AskJev>(async (state, questions) => {
     expect(state).toBe("민수: 현석 생일 언제?");
     const texts = Object.values(questions).map((q) => q.instructions.memory);
@@ -210,7 +232,7 @@ test("recallMemories: 그 방 기억만 후보로 보내고 고른 것을 오래
     expect(questions.k0.instructions.question).toBe("이 기억이 위 채팅 질문에 답하는 데 직접 도움이 되는가?");
     return { k0: 0.5, k1: 0.1, k2: 0.92 };
   });
-  const out = await recallMemories(db(), main, "민수", "현석 생일 언제?", { askJev, env });
+  const out = await recallMemories(main, "민수", "현석 생일 언제?", { askJev, env });
   expect(out).toEqual([
     { text: "생일 3월 14일", nickname: "현석", context: ["민수: 생일?"], createdAt: new Date(T0) },
     { text: "이사 감", nickname: "철수", context: [], createdAt: new Date(T0 + 2000) },
@@ -219,18 +241,18 @@ test("recallMemories: 그 방 기억만 후보로 보내고 고른 것을 오래
 
 test("recallMemories: 키가 없거나 후보가 없으면 Jev 를 부르지 않는다", async () => {
   const askJev = vi.fn<typeof AskJev>();
-  putMemory("a", "main", "현석", "생일", T0);
-  expect(await recallMemories(db(), main, "민수", "q", { askJev, env: {} as NodeJS.ProcessEnv })).toEqual([]);
-  expect(await recallMemories(db(), dm, "민수", "q", { askJev, env })).toEqual([]);
+  await putMemory("a", "main", "현석", "생일", T0);
+  expect(await recallMemories(main, "민수", "q", { askJev, env: {} as NodeJS.ProcessEnv })).toEqual([]);
+  expect(await recallMemories(dm, "민수", "q", { askJev, env })).toEqual([]);
   expect(askJev).not.toHaveBeenCalled();
 });
 
 test("recallMemories: Jev 가 실패하면 빈 목록", async () => {
-  putMemory("a", "main", "현석", "생일", T0);
+  await putMemory("a", "main", "현석", "생일", T0);
   const askJev = vi.fn<typeof AskJev>(async () => {
     throw new Error("jev_500");
   });
-  expect(await recallMemories(db(), main, "민수", "q", { askJev, env })).toEqual([]);
+  expect(await recallMemories(main, "민수", "q", { askJev, env })).toEqual([]);
 });
 
 test("rememberSince: 같은 ms 안의 나노초 경계를 자르지 않는다", async () => {
@@ -243,7 +265,7 @@ test("rememberSince: 같은 ms 안의 나노초 경계를 자르지 않는다", 
   const sent = JSON.stringify(askJev.mock.calls[0][1]);
   expect(sent).toContain("민수: 질문");
   expect(sent).not.toContain("민수: 나중");
-  const saved = fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp;
+  const saved = (await stateOf("main"))!;
   expect(saved.seconds).toBe(1_800_000_000);
   expect(saved.nanoseconds).toBe(500_000_700);
 
@@ -252,10 +274,56 @@ test("rememberSince: 같은 ms 안의 나노초 경계를 자르지 않는다", 
   expect(askJev).not.toHaveBeenCalled();
 });
 
-test("rememberSince: 저장한 기억의 createdAt 은 원래 메시지 Timestamp 그대로", async () => {
+test("rememberSince: 저장한 기억의 createdAt 은 원래 메시지 시각의 밀리초", async () => {
   const t = new Timestamp(1_800_000_000, 123_456_789);
   fake.col("messages").set("m1", { uid: "a", nickname: "민수", text: "생일 3월", createdAt: t });
   await rememberSince(db(), main, t, { askJev: fakeJev({ "생일 3월": 0.9 }), env });
-  const c = fake.col("memories").get("main_m1")!.createdAt as Timestamp;
-  expect([c.seconds, c.nanoseconds]).toEqual([1_800_000_000, 123_456_789]);
+  expect((await memDoc("main_m1"))!.createdAt).toEqual(new Date(1_800_000_000_123));
+});
+
+test("rememberSince: 같은 초 안 다른 나노초 메시지는 다음 판정에서 다시 보지도 빠뜨리지도 않는다", async () => {
+  const S = 1_800_000_000;
+  await setState("main", new Timestamp(S, 500_000_100));
+  fake.col("messages").set("before", { uid: "a", nickname: "민수", text: "앞", createdAt: new Timestamp(S, 500_000_050) });
+  fake.col("messages").set("same", { uid: "a", nickname: "민수", text: "경계", createdAt: new Timestamp(S, 500_000_100) });
+  fake.col("messages").set("after", { uid: "a", nickname: "민수", text: "뒤", createdAt: new Timestamp(S, 500_000_150) });
+  const askJev = fakeJev({});
+  expect(await rememberSince(db(), main, new Timestamp(S, 500_000_150), { askJev, env })).toEqual({ judged: 1, saved: 0 });
+  const sent = JSON.stringify(askJev.mock.calls[0][1]);
+  expect(sent).toContain("민수: 뒤");
+  expect(sent).not.toContain("민수: 앞");
+  expect(sent).not.toContain("민수: 경계");
+  expect(await stateOf("main")).toEqual({ seconds: S, nanoseconds: 500_000_150 });
+});
+
+test("rememberSince: 그사이 더 앞선 판정 상태가 저장됐으면 뒤 시각으로 덮지 않는다", async () => {
+  await setState("main", Timestamp.fromMillis(T0));
+  putMsg("messages", "m1", "a", "민수", "새말", T0 + 1000);
+  const askJev = vi.fn<typeof AskJev>(async () => {
+    await setState("main", Timestamp.fromMillis(T0 + 9000));
+    return {};
+  });
+  expect(await rememberSince(db(), main, Timestamp.fromMillis(T0 + 1000), { askJev, env })).toEqual({ judged: 1, saved: 0 });
+  expect(await stateMs("main")).toBe(T0 + 9000);
+});
+
+test("rememberSince: 같은 방에 상태 문서가 없을 때 동시에 처음 저장해도 throw 하지 않는다", async () => {
+  putMsg("messages", "m1", "a", "민수", "새말", T0 + 1000);
+  const askJev = vi.fn<typeof AskJev>(async () => {
+    await setState("main", Timestamp.fromMillis(T0 + 9000));
+    return {};
+  });
+  await expect(rememberSince(db(), main, Timestamp.fromMillis(T0 + 1000), { askJev, env })).resolves.toEqual({ judged: 1, saved: 0 });
+  expect(await stateMs("main")).toBe(T0 + 9000);
+});
+
+test("MONGODB_URI 가 없으면 기억 꺼내기·저장을 건너뛴다", async () => {
+  const noMongo = { TYPESAFE_API_KEY: "key-test" } as unknown as NodeJS.ProcessEnv;
+  await putMemory("a", "main", "현석", "생일", T0);
+  putMsg("messages", "m1", "a", "민수", "생일 3월", T0);
+  const askJev = fakeJev({ "생일 3월": 0.9 });
+  expect(await recallMemories(main, "민수", "q", { askJev, env: noMongo })).toEqual([]);
+  expect(await rememberSince(db(), main, Timestamp.fromMillis(T0), { askJev, env: noMongo })).toEqual({ judged: 0, saved: 0 });
+  expect(askJev).not.toHaveBeenCalled();
+  expect(await memIds()).toEqual(["a"]);
 });

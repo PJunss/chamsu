@@ -6,8 +6,27 @@ import type { Memory } from "@/lib/claude/context";
 import { askJev, jevConfigured, type NoulQuestion } from "@/lib/claude/jev";
 import { isBotUid } from "@/lib/claude/personas/info";
 import type { Room } from "@/lib/claude/rooms";
+import { mongoCollection, mongoConfigured } from "@/lib/mongo";
 
 export type StoredMemory = Memory & { id: string; score: number };
+
+/** MongoDB memories 문서. _id 는 `{roomId}_{messageId}`, createdAt 은 원래 메시지 시각(밀리초). */
+export type MemoryDoc = {
+  _id: string;
+  text: string;
+  nickname: string;
+  uid: string;
+  context: string[];
+  roomId: string;
+  messageId: string;
+  createdAt: Date;
+  score: number;
+};
+
+/** MongoDB memoryState 문서. _id 는 방 id. Firestore 메시지 시각을 밀리초로 자르지 않고 두 수로 둔다. */
+export type MemoryStateDoc = { _id: string; lastJudgedAt: { seconds: number; nanoseconds: number } };
+
+const DUPLICATE_KEY = 11000;
 type Deps = { askJev?: typeof askJev; env?: NodeJS.ProcessEnv };
 
 const RECALL_QUESTION = "이 기억이 위 채팅 질문에 답하는 데 직접 도움이 되는가?";
@@ -23,34 +42,26 @@ export function pickMemories(scores: Record<string, number>, candidates: StoredM
     .slice(0, RECALL_MAX);
 }
 
-/** 그 방의 기억 중 질문에 도움이 되는 것을 오래된 순으로. 키가 없거나 후보가 없거나 Jev 가 실패하면 빈 목록. */
+/** 그 방의 기억 중 질문에 도움이 되는 것을 오래된 순으로. MongoDB·Jev 설정이 없거나 후보가 없거나 Jev 가 실패하면 빈 목록. */
 export async function recallMemories(
-  db: Firestore,
   room: Room,
   asker: string,
   question: string,
   deps: Deps = {},
 ): Promise<Memory[]> {
   const env = deps.env ?? process.env;
-  if (!jevConfigured(env)) return [];
-  const snap = await db
-    .collection("memories")
-    .where("roomId", "==", room.id)
-    .orderBy("createdAt", "desc")
-    .limit(RECALL_CANDIDATES)
-    .get();
-  if (snap.empty) return [];
-  const candidates: StoredMemory[] = snap.docs.map((d) => {
-    const x = d.data();
-    return {
-      id: d.id,
-      text: x.text,
-      nickname: x.nickname,
-      context: Array.isArray(x.context) ? x.context : [],
-      createdAt: (x.createdAt as Timestamp).toDate(),
-      score: 0,
-    };
-  });
+  if (!jevConfigured(env) || !mongoConfigured(env)) return [];
+  const memories = await mongoCollection<MemoryDoc>("memories", env);
+  const docs = await memories.find({ roomId: room.id }).sort({ createdAt: -1 }).limit(RECALL_CANDIDATES).toArray();
+  if (docs.length === 0) return [];
+  const candidates: StoredMemory[] = docs.map((x) => ({
+    id: x._id,
+    text: x.text,
+    nickname: x.nickname,
+    context: Array.isArray(x.context) ? x.context : [],
+    createdAt: x.createdAt,
+    score: 0,
+  }));
   const questions: Record<string, NoulQuestion> = {};
   candidates.forEach((m, i) => {
     questions[`k${i}`] = { type: "noul", instructions: { memory: `${m.nickname}: ${m.text}`, question: RECALL_QUESTION } };
@@ -64,11 +75,6 @@ export async function recallMemories(
     console.error("recall failed", e instanceof Error ? e.name : "unknown");
     return [];
   }
-}
-
-/** 마이크로초 단위 서버 시각을 ms 로 자르지 않고 비교한다. */
-function compareTimestamps(a: Timestamp, b: Timestamp): number {
-  return a.seconds !== b.seconds ? a.seconds - b.seconds : a.nanoseconds - b.nanoseconds;
 }
 
 /** guarded 는 Jev 요청 검사에 걸린 사람 메시지다. */
@@ -90,7 +96,8 @@ export function judgeRange(
 }
 
 /**
- * 지난 판단 이후 until(질문 메시지 시각, 이하 포함)까지 그 방의 메시지를 Jev 로 판단해 기억할 것을 원문 그대로 memories 에 복사한다.
+ * 지난 판단 이후 until(질문 메시지 시각, 이하 포함)까지 그 방의 Firestore 메시지를 Jev 로 판단해 기억할 것을 원문 그대로 MongoDB memories 에 복사한다.
+ * 판정 상태(memoryState)는 MongoDB 에 두고 앞으로만 옮긴다. MongoDB·Jev 설정이 없으면 아무것도 하지 않는다.
  * 한 묶음이라도 실패하면 memoryState 를 갱신하지 않고 throw 해 다음 호출이 다시 판단하게 한다.
  */
 export async function rememberSince(
@@ -100,11 +107,14 @@ export async function rememberSince(
   deps: Deps = {},
 ): Promise<{ judged: number; saved: number }> {
   const env = deps.env ?? process.env;
-  if (!jevConfigured(env)) return { judged: 0, saved: 0 };
+  if (!jevConfigured(env) || !mongoConfigured(env)) return { judged: 0, saved: 0 };
   const ask = deps.askJev ?? askJev;
-  const stateRef = db.collection("memoryState").doc(room.id);
-  const stateSnap = await stateRef.get();
-  const last = stateSnap.exists ? (stateSnap.data()?.lastJudgedAt as Timestamp | undefined) : undefined;
+  const [memories, states] = await Promise.all([
+    mongoCollection<MemoryDoc>("memories", env),
+    mongoCollection<MemoryStateDoc>("memoryState", env),
+  ]);
+  const state = await states.findOne({ _id: room.id });
+  const last = state ? new Timestamp(state.lastJudgedAt.seconds, state.lastJudgedAt.nanoseconds) : undefined;
   const messages = db.collection(room.messagesPath);
   const docs = last
     ? (
@@ -143,32 +153,51 @@ export async function rememberSince(
     const keep = batch
       .map((m, i) => ({ m, score: scores[`m${i}`] ?? 0 }))
       .filter((x) => x.score >= JUDGE_THRESHOLD);
-    await Promise.all(
-      keep.map(({ m, score }) =>
-        db
-          .collection("memories")
-          .doc(`${room.id}_${m.id}`)
-          .set({
+    if (keep.length > 0) {
+      await memories.bulkWrite(
+        keep.map(({ m, score }) => {
+          const doc: MemoryDoc = {
+            _id: `${room.id}_${m.id}`,
             text: m.text,
             nickname: m.nickname,
             uid: m.uid,
             context: context.get(m.id) ?? [],
             roomId: room.id,
             messageId: m.id,
-            createdAt: stamps.get(m.id)!,
+            createdAt: stamps.get(m.id)!.toDate(),
             score,
-          }),
-      ),
-    );
+          };
+          return { replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } };
+        }),
+      );
+    }
     saved += keep.length;
   }
 
-  const end = stamps.get(range[range.length - 1].id)!;
-  await db.runTransaction(async (tx) => {
-    const cur = await tx.get(stateRef);
-    const prev = cur.exists ? (cur.data()?.lastJudgedAt as Timestamp | undefined) : undefined;
-    if (prev && compareTimestamps(prev, end) >= 0) return;
-    tx.set(stateRef, { lastJudgedAt: end });
-  });
+  await advanceState(room.id, stamps.get(range[range.length - 1].id)!, env);
   return { judged: targets.length, saved };
+}
+
+/**
+ * 판정 상태를 end 로 옮긴다. 저장값보다 클 때만 바꾸는 조건부 upsert 이고,
+ * 저장값이 이미 앞서 있어 새로 넣으려다 생긴 중복 키 오류는 무시한다.
+ */
+async function advanceState(roomId: string, end: Timestamp, env: NodeJS.ProcessEnv): Promise<void> {
+  const states = await mongoCollection<MemoryStateDoc>("memoryState", env);
+  const { seconds, nanoseconds } = end;
+  try {
+    await states.updateOne(
+      {
+        _id: roomId,
+        $or: [
+          { "lastJudgedAt.seconds": { $lt: seconds } },
+          { "lastJudgedAt.seconds": seconds, "lastJudgedAt.nanoseconds": { $lt: nanoseconds } },
+        ],
+      },
+      { $set: { lastJudgedAt: { seconds, nanoseconds } } },
+      { upsert: true },
+    );
+  } catch (e) {
+    if ((e as { code?: unknown }).code !== DUPLICATE_KEY) throw e;
+  }
 }

@@ -240,7 +240,7 @@ export async function POST(req: Request) {
         /** 기억 꺼내기와 요청 검사는 함께 기다린다. 검사에 걸리면 꺼낸 기억은 쓰지 않는다. */
         const useMemory = persona.useMemory !== false;
         const recallP: Promise<Memory[]> = useMemory
-          ? recallMemories(db, room, q.nickname, question).catch((e: unknown) => {
+          ? recallMemories(room, q.nickname, question).catch((e: unknown) => {
               console.error("recall failed", errName(e));
               timing.note("recall_error", errName(e));
               return [];
