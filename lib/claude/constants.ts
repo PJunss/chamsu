@@ -19,6 +19,12 @@ export const JUDGE_THRESHOLD = 0.6;
 export const GUARD_THRESHOLD = 0.6;
 /** Jev 요청 검사를 기다리는 최대 시간. 넘으면 걸리지 않은 것으로 진행한다. */
 export const GUARD_TIMEOUT_MS = 3_000;
+/** 호감도 문서가 없을 때의 값이자 시간이 지나면 돌아가는 값. */
+export const AFFINITY_DEFAULT = 50;
+/** 하루에 AFFINITY_DEFAULT 쪽으로 돌아가는 양. */
+export const AFFINITY_DECAY_PER_DAY = 2;
+/** 메시지 하나가 바꾸는 호감도의 최대 크기. */
+export const AFFINITY_MAX_DELTA = 5;
 export const DM_SETTLE_MS = 1_500;
 /** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
 export const BOT_CHAIN_MAX = 3;

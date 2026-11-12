@@ -198,7 +198,7 @@ export async function POST(req: Request) {
             })
           : Promise.resolve([]);
         const [checked, recalled] = await Promise.all([guardP, recallP]);
-        if (checked && "score" in checked) timing.note("guard", checked.score);
+        if (checked && "guard" in checked) timing.note("guard", checked.guard);
         else if (checked) timing.note("guard_error", checked.error);
         const guarded = isGuarded(checked);
         const memories = guarded ? [] : recalled;

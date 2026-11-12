@@ -229,3 +229,33 @@ describe("memories·memoryState", () => {
     await assertFails(setDoc(doc(member(), "memoryState/main"), { lastJudgedAt: Timestamp.now() }));
   });
 });
+
+describe("affinity", () => {
+  const ME = "n_" + "0123456789abcdef".repeat(2);
+  const YOU = "n_" + "fedcba9876543210".repeat(2);
+  const MINE = `main_bianca_${ME}`;
+  const YOURS = `main_bianca_${YOU}`;
+  const me = () => member(ME, "현석");
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await setDoc(doc(db, `affinity/${MINE}`), { roomId: "main", personaId: "bianca", uid: ME, score: 60, updatedAt: Timestamp.now() });
+      await setDoc(doc(db, `affinity/${YOURS}`), { roomId: "main", personaId: "bianca", uid: YOU, score: 40, updatedAt: Timestamp.now() });
+    });
+  });
+
+  test("내 문서는 읽는다", async () => assertSucceeds(getDoc(doc(me(), `affinity/${MINE}`))));
+  test("남의 문서는 못 읽는다", async () => assertFails(getDoc(doc(me(), `affinity/${YOURS}`))));
+  test("비회원은 내 uid 문서도 못 읽는다", async () => assertFails(getDoc(doc(outsider(), `affinity/${MINE}`))));
+  test("내 uid 로 거른 쿼리는 허용, 거르지 않은 쿼리는 거부", async () => {
+    await assertSucceeds(getDocs(query(collection(me(), "affinity"), where("uid", "==", ME), where("roomId", "==", "main"))));
+    await assertFails(getDocs(collection(me(), "affinity")));
+  });
+  test("쓰기는 전부 거부", async () => {
+    await assertFails(setDoc(doc(me(), `affinity/${MINE}`), { roomId: "main", personaId: "bianca", uid: ME, score: 100 }));
+    await assertFails(updateDoc(doc(me(), `affinity/${MINE}`), { score: 100 }));
+    await assertFails(deleteDoc(doc(me(), `affinity/${MINE}`)));
+    await assertFails(setDoc(doc(me(), `affinity/main_lucia_${ME}`), { roomId: "main", personaId: "lucia", uid: ME, score: 100 }));
+  });
+});

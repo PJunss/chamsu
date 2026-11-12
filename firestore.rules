@@ -49,5 +49,10 @@ service cloud.firestore {
     match /rooms/{roomId}/claudeJobs/{id} {
       allow read: if isRoomOwner(roomId);
     }
+
+    // 호감도는 서버만 쓰고, 자기 uid 의 문서만 읽는다
+    match /affinity/{id} {
+      allow read: if isMember() && resource.data.uid == request.auth.uid;
+    }
   }
 }
