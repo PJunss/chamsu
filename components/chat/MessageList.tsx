@@ -115,9 +115,20 @@ export function MessageList({
           );
         })}
         {typing.map((p) => (
-          <li key={`typing-${p.id}`} className="flex items-center gap-2">
+          <li key={`typing-${p.id}`} className="flex justify-start gap-2" aria-live="polite">
             <BotAvatar src={p.avatar} alt={p.nickname} />
-            <span className="animate-pulse text-xs text-zinc-400">{p.nickname}가 입력 중…</span>
+            <div className="flex min-w-0 flex-col items-start">
+              <span className="mb-0.5 text-xs text-zinc-500">{p.nickname}가 입력 중</span>
+              <p className="flex items-center gap-1 rounded-lg bg-zinc-100 px-3 py-3" aria-label={`${p.nickname}가 입력 중`}>
+                {[0, 150, 300].map((delay) => (
+                  <span
+                    key={delay}
+                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400"
+                    style={{ animationDelay: `${delay}ms` }}
+                  />
+                ))}
+              </p>
+            </div>
           </li>
         ))}
       </ul>
