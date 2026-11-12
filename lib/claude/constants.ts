@@ -22,9 +22,11 @@ export const GUARD_TIMEOUT_MS = 3_000;
 /** 호감도 문서가 없을 때의 값이자 시간이 지나면 돌아가는 값. */
 export const AFFINITY_DEFAULT = 50;
 /** 하루에 AFFINITY_DEFAULT 쪽으로 돌아가는 양. */
-export const AFFINITY_DECAY_PER_DAY = 2;
-/** 메시지 하나가 바꾸는 호감도의 최대 크기. */
-export const AFFINITY_MAX_DELTA = 5;
+export const AFFINITY_DECAY_PER_DAY = 0.5;
+/** 호의 점수가 올리는 양의 배율. 현재 값이 높을수록 덜 오른다. */
+export const AFFINITY_GAIN = 1.0;
+/** 적대 점수가 내리는 양의 배율. */
+export const AFFINITY_LOSS = 1.5;
 export const DM_SETTLE_MS = 1_500;
 /** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
 export const BOT_CHAIN_MAX = 3;
