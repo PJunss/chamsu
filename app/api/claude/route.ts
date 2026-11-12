@@ -225,7 +225,7 @@ export async function POST(req: Request) {
             score = await readAffinity(db, key).catch(() => AFFINITY_DEFAULT);
           }
           timing.note("affinity", score.toFixed(3));
-          timing.lap("affinity");
+          timing.lap("affinity_ms");
           affinity = { nickname: q.nickname, score };
         }
 

@@ -6,6 +6,11 @@ import {
 
 const DAY_MS = 86_400_000;
 
+/** Jev 점수를 0~1 로 자른다. 숫자가 아니면 0. */
+export function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+}
+
 export function affinityDocId(roomId: string, personaId: string, uid: string): string {
   return `${roomId}_${personaId}_${uid}`;
 }
@@ -21,7 +26,7 @@ export function effectiveAffinity(score: number, updatedAtMs: number, nowMs: num
 /**
  * Jev 의 호의·적대 점수(0~1)와 복귀를 반영한 현재 값으로 정한 변화량(소수, 반올림하지 않음).
  * AFFINITY_GAIN × 호의 × (100 − 현재) / 100 − AFFINITY_LOSS × 적대. 높을수록 덜 오르고, 내리기는 쉽다.
- * 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
+ * 호의·적대 점수는 0~1 로 잘라 쓴다. 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
  */
 export function affinityDelta(
   current: number,
@@ -31,8 +36,8 @@ export function affinityDelta(
   nowMs: number,
 ): number {
   const cooling = lastGainAtMs !== null && nowMs - lastGainAtMs < AFFINITY_GAIN_COOLDOWN_MS;
-  const gain = cooling ? 0 : (AFFINITY_GAIN * pos * (100 - current)) / 100;
-  return gain - AFFINITY_LOSS * neg;
+  const gain = cooling ? 0 : (AFFINITY_GAIN * clamp01(pos) * (100 - current)) / 100;
+  return gain - AFFINITY_LOSS * clamp01(neg);
 }
 
 /** 화면과 프롬프트에 쓰는 정수(소수점 버림). */

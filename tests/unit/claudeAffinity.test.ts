@@ -131,3 +131,10 @@ test("처음부터 내려가면 lastGainAt 은 null 이다", async () => {
   await applyAffinity(db(), { ...key, pos: 0, neg: 0.5, now: T0 });
   expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toBeNull();
 });
+
+test("호의·적대 점수는 0~1 로 잘라 쓴다", () => {
+  expect(affinityDelta(50, 3, 0, null, T0)).toBe(affinityDelta(50, 1, 0, null, T0));
+  expect(affinityDelta(50, -0.5, 0, null, T0)).toBe(0);
+  expect(affinityDelta(50, 0, 2, null, T0)).toBe(affinityDelta(50, 0, 1, null, T0));
+  expect(affinityDelta(50, 0, -1, null, T0)).toBe(0);
+});

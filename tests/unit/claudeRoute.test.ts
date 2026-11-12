@@ -587,7 +587,9 @@ describe("POST /api/claude 호감도", () => {
     expect(byPersona.bianca?.score).toBeCloseTo(50.49, 10);
     expect(byPersona.lucia?.score).toBeCloseTo(80.196, 10);
     const lines = vi.mocked(console.log).mock.calls.filter((c) => c[0] === "claude timing").map((c) => c.slice(1).join(" "));
-    expect(lines.find((l) => l.includes("persona=bianca"))).toMatch(/affinity_delta=0\.490 .*affinity=50\.490/);
+    const bianca = lines.find((l) => l.includes("persona=bianca"))!;
+    expect(bianca).toMatch(/affinity_delta=0\.490 .*affinity=50\.490 affinity_ms=\d+/);
+    expect(bianca.match(/ affinity=/g)).toHaveLength(1);
   });
 
   test("Jev 가 실패하거나 키가 없으면 호감도를 바꾸지 않고 읽은 값으로 답한다", async () => {

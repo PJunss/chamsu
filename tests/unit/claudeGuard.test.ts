@@ -60,3 +60,8 @@ test("0.6 이상만 걸리고, 검사하지 않았거나 실패하면 걸리지 
   expect(isGuarded(null)).toBe(false);
   expect(isGuarded({ error: "Error" })).toBe(false);
 });
+
+test("Jev 점수는 0~1 로 잘라 돌려준다", async () => {
+  const askJev = vi.fn<typeof AskJev>(async () => ({ g: 1.2, p: -0.1, n: 3 }));
+  expect(await guardScore("철수", "안녕", { askJev, env })).toEqual({ guard: 1, pos: 0, neg: 1 });
+});
