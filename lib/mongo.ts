@@ -1,4 +1,4 @@
-import { MongoClient, type Db, type Document } from "mongodb";
+import { MongoClient, type ClientSession, type Db, type Document } from "mongodb";
 
 /** 서버 전용. 봇 기억·PIN 시도·봇 사용량처럼 화면이 구독하지 않는 기록을 두는 MongoDB 연결. */
 
@@ -91,4 +91,18 @@ export async function mongoCollection<T extends Document = Document>(
 ) {
   const db = await getMongoDb(env);
   return db.collection<T>(mongoCollections(collectionPrefix(env))[name]);
+}
+
+/** 읽고-판단하고-쓰기를 한 트랜잭션으로 묶는다. 일시적 충돌은 드라이버가 다시 시도한다. */
+export async function withMongoTransaction<T>(
+  fn: (session: ClientSession) => Promise<T>,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<T> {
+  const db = await getMongoDb(env);
+  const session = db.client.startSession();
+  try {
+    return await session.withTransaction(() => fn(session));
+  } finally {
+    await session.endSession();
+  }
 }

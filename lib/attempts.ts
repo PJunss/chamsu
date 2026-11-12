@@ -1,15 +1,24 @@
-import { getAdminDb } from "@/lib/firebaseAdmin";
 import { toDocId } from "@/lib/clientIp";
-import { nextRateState, type RateState } from "@/lib/rateLimit";
+import { mongoCollection, withMongoTransaction } from "@/lib/mongo";
+import { WINDOW_MS, nextRateState } from "@/lib/rateLimit";
 
-export async function consumeAttempt(ip: string): Promise<boolean> {
-  const db = getAdminDb();
-  const ref = db.collection("rateLimits").doc(toDocId(ip));
-  return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const prev = snap.exists ? (snap.data() as RateState) : null;
-    const { allowed, state } = nextRateState(prev, Date.now());
-    if (allowed) tx.set(ref, state);
+/** MongoDB rateLimits 문서. _id 는 toDocId(ip), expireAt 은 창이 끝나는 시각(TTL 색인이 지운다). */
+type AttemptDoc = { _id: string; count: number; windowStart: number; expireAt: Date };
+
+/** PIN 시도 하나를 센다. 창 안에서 한도를 넘으면 false. MONGODB_URI 가 없으면 throw 한다. */
+export async function consumeAttempt(ip: string, now: number = Date.now(), env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const col = await mongoCollection<AttemptDoc>("rateLimits", env);
+  const id = toDocId(ip);
+  return withMongoTransaction(async (session) => {
+    const prev = await col.findOne({ _id: id }, { session });
+    const { allowed, state } = nextRateState(prev ? { count: prev.count, windowStart: prev.windowStart } : null, now);
+    if (allowed) {
+      await col.replaceOne(
+        { _id: id },
+        { ...state, expireAt: new Date(state.windowStart + WINDOW_MS) },
+        { upsert: true, session },
+      );
+    }
     return allowed;
-  });
+  }, env);
 }

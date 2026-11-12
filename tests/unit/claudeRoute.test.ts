@@ -90,6 +90,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.unstubAllEnvs();
+  vi.stubEnv("MONGODB_URI", "");
   vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
   vi.stubEnv("VERCEL_ENV", "production");
   vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "chamsu.example.app");
@@ -655,8 +656,6 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     putMessage("old1", OWNER, "현석", "예전 말", NOW - 60_000, DM_MESSAGES);
     putMessage("old2", "bot_bianca", "비앙카", "예전 답", NOW - 50_000, DM_MESSAGES);
     fake.col(DM_JOBS).set("old1_bianca", { status: "done" });
-    fake.col("memories").set(`${DM}_old1`, { roomId: DM, text: "예전 말" });
-    fake.col("memoryState").set(DM, { lastJudgedAt: ts(NOW - 50_000) });
     fake.col("affinity").set(`${DM}_bianca_${OWNER}`, { roomId: DM, personaId: "bianca", uid: OWNER, score: 90, updatedAt: ts(NOW) });
     fake.col("affinity").set(`main_bianca_${OWNER}`, { roomId: "main", personaId: "bianca", uid: OWNER, score: 70, updatedAt: ts(NOW) });
   };
@@ -672,8 +671,6 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     expect(guardScore).not.toHaveBeenCalled();
     expect(rememberSince).not.toHaveBeenCalled();
     expect(fake.col(DM_JOBS).size).toBe(0);
-    expect(fake.col("memories").size).toBe(0);
-    expect(fake.col("memoryState").has(DM)).toBe(false);
     expect(fake.col("affinity").has(`${DM}_bianca_${OWNER}`)).toBe(false);
     expect(fake.col("affinity").has(`main_bianca_${OWNER}`)).toBe(true);
     expect([...fake.col(DM_MESSAGES).values()]).toEqual([
@@ -692,7 +689,7 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     expect(input.affinity).toEqual({ nickname: "현석", score: 50 });
     expect(input.history).toEqual([]);
     expect(input.memories).toEqual([]);
-    expect(console.log).toHaveBeenCalledWith("claude clear", `room=${DM}`, "messages=3", "memories=1", "affinity=1");
+    expect(console.log).toHaveBeenCalledWith("claude clear", `room=${DM}`, "messages=3", "memories=0", "affinity=1");
   });
 
   test("인사를 만들지 못하면 빈 방으로 두고 200", async () => {
@@ -710,7 +707,6 @@ describe("POST /api/claude 1:1 방 /clear", () => {
     putMessage("c1", OTHER, "민수", "/clear", NOW - 1000, DM_MESSAGES);
     expect((await POST(req({ roomId: DM, messageId: "c1" }))).status).toBe(400);
     expect(fake.col(DM_MESSAGES).size).toBe(3);
-    expect(fake.col("memories").size).toBe(1);
   });
 
   test("단체방의 /clear 는 평범한 메시지다", async () => {
