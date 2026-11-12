@@ -72,7 +72,7 @@ export async function getMongoDb(env: NodeJS.ProcessEnv = process.env): Promise<
   const uri = env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI missing");
   holder.db ??= (async () => {
-    const client = new MongoClient(uri, { maxPoolSize: 5 });
+    const client = new MongoClient(uri, { maxPoolSize: 5, serverSelectionTimeoutMS: 5_000 });
     await client.connect();
     return client.db();
   })().catch((e: unknown) => {
