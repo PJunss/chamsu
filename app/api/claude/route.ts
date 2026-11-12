@@ -7,6 +7,7 @@ import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
+import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
 import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
 import { sleep } from "@/lib/claude/sleep";
 import { createTiming, type Timing } from "@/lib/claude/timing";
@@ -32,9 +33,6 @@ type QuestionDoc = {
   chainDepth?: unknown;
   chainRootUid?: unknown;
 };
-
-/** 봇 하나의 처리 결과. user·daily·failed 는 안내 문구를 방에 쓴 경우, error 는 아무것도 쓰지 못한 경우다. */
-type BotResult = "ok" | "user" | "daily" | "failed" | "error";
 
 type JobStatus = "done" | "failed" | "skipped";
 
@@ -69,7 +67,7 @@ export async function POST(req: Request) {
     const { question, chainDepth, chainRootUid } = target;
 
     /** 작업 문서는 봇마다 `{messageId}_{personaId}` 로 만든다. 이미 있는 봇은 다른 호출이 처리 중이라 건너뛴다. */
-    const created = await Promise.all(
+    const settled = await Promise.allSettled(
       personas.map(async (persona): Promise<BotJob | null> => {
         const timing = createTiming();
         const ref = db.collection(room.jobsPath).doc(`${id}_${persona.info.id}`);
@@ -98,11 +96,19 @@ export async function POST(req: Request) {
         return { persona, timing, mark };
       }),
     );
-    const jobs = created.filter((j) => j !== null);
-    if (jobs.length === 0) return fail("duplicate", 409);
+    const jobs = settled.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
     const logTimings = () => {
       for (const j of jobs) console.log("claude timing", `persona=${j.persona.info.id}`, j.timing.line());
     };
+    const rejected = settled.find((r) => r.status === "rejected");
+    if (rejected) {
+      console.error("claude job create failed", errName(rejected.reason));
+      await Promise.all(jobs.map((j) => j.mark("failed")));
+      for (const j of jobs) j.timing.note("result", "job_create_failed");
+      logTimings();
+      return fail("server_error", 500);
+    }
+    if (jobs.length === 0) return fail("duplicate", 409);
 
     if (room.ownerUid !== null) {
       try {
@@ -206,12 +212,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const wrote = jobs.filter((_, i) => results[i] !== "error").map((j) => j.persona.info.id);
-    if (wrote.length === 0) return fail("server_error", 500);
-    if (results.every((r) => r === "failed")) return fail("claude_failed", 502);
-    if (results.every((r) => r === "user")) return fail("user_limited", 429);
-    if (results.every((r) => r === "user" || r === "daily")) return fail("daily_limited", 429);
-    return Response.json({ ok: true, personas: wrote });
+    const outcome = decideOutcome(results);
+    if (outcome !== "ok") return fail(outcome.error, outcome.status);
+    return Response.json({ ok: true, personas: jobs.filter((_, i) => results[i] === "ok").map((j) => j.persona.info.id) });
   } catch (e) {
     console.error("claude route failed", errName(e));
     return fail("server_error", 500);

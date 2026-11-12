@@ -246,6 +246,7 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
     });
     const res = await POST(req({ messageId: "m2" }));
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, personas: ["lucia"] });
     expect(botReplies()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ uid: "claude", text: REPLY_TEXT.failed, chainDepth: 1, chainRootUid: "u1" }),
@@ -259,9 +260,80 @@ describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
 
   test("두 봇 모두 답에 실패하면 502", async () => {
     answer.mockRejectedValue(new Error("boom"));
-    expect((await POST(req({ messageId: "m2" }))).status).toBe(502);
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "claude_failed" });
+    expect(job("m2_bianca")?.status).toBe("failed");
+    expect(job("m2_lucia")?.status).toBe("failed");
     expect(botReplies().map((m) => m.text).sort()).toEqual([LUCIA_TEXT.failed, REPLY_TEXT.failed].sort());
     expect(rememberSince).not.toHaveBeenCalled();
+  });
+
+  test("한 봇의 작업 생성이 실패하면 만든 작업을 모두 failed 로 두고 500, 답은 쓰지 않는다", async () => {
+    const original = fake.db.runTransaction;
+    vi.spyOn(fake.db, "runTransaction").mockImplementation((fn) =>
+      original((tx) =>
+        fn({
+          ...tx,
+          get: async (r) => {
+            if (r.id === "m2_lucia") throw new Error("tx");
+            return tx.get(r);
+          },
+        }),
+      ),
+    );
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "server_error" });
+    expect(job("m2_bianca")?.status).toBe("failed");
+    expect(job("m2_lucia")).toBeUndefined();
+    expect(answer).not.toHaveBeenCalled();
+    expect(botReplies()).toEqual([]);
+    expect(rememberSince).not.toHaveBeenCalled();
+  });
+
+  test("한 봇의 답 쓰기가 throw 해도 다른 봇이 답하면 200 이고 실패 봇 작업은 failed", async () => {
+    const collection = fake.db.collection;
+    vi.spyOn(fake.db, "collection").mockImplementation((path: string) => {
+      const c = collection(path);
+      return {
+        ...c,
+        add: async (data: Data) => {
+          if (data.uid === "bot_lucia") throw new Error("write");
+          return c.add(data);
+        },
+      };
+    });
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, personas: ["bianca"] });
+    expect(botReplies()).toEqual([expect.objectContaining({ uid: "claude", text: "비앙카 답" })]);
+    expect(job("m2_bianca")?.status).toBe("done");
+    expect(job("m2_lucia")?.status).toBe("failed");
+  });
+
+  test("한 봇은 실패 안내, 다른 봇은 아무것도 못 쓰면 502", async () => {
+    answer.mockRejectedValue(new Error("boom"));
+    const collection = fake.db.collection;
+    vi.spyOn(fake.db, "collection").mockImplementation((path: string) => {
+      const c = collection(path);
+      return {
+        ...c,
+        add: async (data: Data) => {
+          if (data.uid === "bot_lucia") throw new Error("write");
+          return c.add(data);
+        },
+      };
+    });
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(502);
+    expect(botReplies()).toEqual([expect.objectContaining({ uid: "claude", text: REPLY_TEXT.failed })]);
+  });
+
+  test("두 봇을 부른 요청에서 기억 저장은 한 번만 돈다", async () => {
+    expect((await POST(req({ messageId: "m2" }))).status).toBe(200);
+    expect(answer).toHaveBeenCalledTimes(2);
+    expect(rememberSince).toHaveBeenCalledTimes(1);
   });
 
   test("봇 메시지 chainDepth 3 이면 다른 봇이 단계 4 로 답하고 연쇄 시작 사람을 이어받는다", async () => {
