@@ -18,7 +18,10 @@ export function buildSystemPrompt(room: Room, persona: PersonaConfig): string {
     "답 말고 다른 말(생각, 계획, 도구 설명)은 쓰지 않는다.",
   ];
   if (persona.useMemory !== false) {
-    rules.push("[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.");
+    rules.push(
+      "[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.",
+      '기억은 원래 알던 것처럼 자연스럽게 말한다. 답에 "[기억]" 같은 표기나 "기억에 따르면", "기록에 따르면" 같은 말을 쓰지 않는다.',
+    );
   }
   if (persona.useHelper !== false) {
     rules.push(

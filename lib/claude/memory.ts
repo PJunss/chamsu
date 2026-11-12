@@ -12,7 +12,7 @@ type Deps = { askJev?: typeof askJev; env?: NodeJS.ProcessEnv };
 
 const RECALL_QUESTION = "이 기억이 위 채팅 질문에 답하는 데 직접 도움이 되는가?";
 const JUDGE_QUESTION =
-  "이 채팅 메시지에 나중에도 기억해 둘 만한, 말한 사람이나 그 주변 사람에 대한 오래 가는 사실(취향, 생일, 직장, 계획, 약속 등)이 들어 있는가?";
+  "이 채팅 메시지가 말한 사람이나 그 주변 사람에 대해 나중에도 기억해 둘 만한, 오래 가는 새 사실(취향, 생일, 직장, 계획, 약속 등)을 알려 주는가? 예전에 한 말을 묻거나 되묻는 질문처럼 새 사실이 없는 메시지는 아니다.";
 
 /** candidates[i] 의 점수는 scores[`k${i}`]. 기준 이상을 점수 순으로 최대 개수만큼, score 는 이번 점수로 바꿔 돌려준다. */
 export function pickMemories(scores: Record<string, number>, candidates: StoredMemory[]): StoredMemory[] {

@@ -37,6 +37,7 @@ test("방 소개, 캐릭터, 공통 규칙을 순서대로 잇는다", () => {
   expect(p).toContain("1~3문장");
   expect(p).toContain('"비앙카:"');
   expect(p).toContain("[기억]");
+  expect(p).toContain("기억은 원래 알던 것처럼 자연스럽게 말한다.");
   expect(p).toContain("ask_helper");
   expect(p).toContain("도우미 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.");
 });
