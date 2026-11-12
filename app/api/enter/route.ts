@@ -3,6 +3,7 @@ import { consumeAttempt } from "@/lib/attempts";
 import { getClientIp } from "@/lib/clientIp";
 import { createCustomToken } from "@/lib/customToken";
 import { isAllowedNickname } from "@/lib/nicknames";
+import { PERSONAS } from "@/lib/claude/personas/info";
 import { isValidPinFormat, pinMatches } from "@/lib/pin";
 
 const fail = (error: string, status: number) => Response.json({ error }, { status });
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     if (nickname === undefined) return Response.json({ ok: true });
     if (!isAllowedNickname(nickname, process.env.CHAT_NICKNAMES)) return fail("unknown_nickname", 403);
     const name = nickname.trim();
+    if (PERSONAS.some((p) => p.nickname === name)) return fail("unknown_nickname", 403);
     const token = await createCustomToken(uidForNickname(name), { member: true, nickname: name });
     return Response.json({ token });
   } catch (e) {

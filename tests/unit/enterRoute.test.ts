@@ -77,3 +77,13 @@ describe("POST /api/enter", () => {
     expect((await POST(req({ pin: "4821" }))).status).toBe(500);
   });
 });
+
+describe("POST /api/enter 봇 닉네임", () => {
+  test("허용 목록에 있어도 봇 닉네임으로는 들어올 수 없다", async () => {
+    vi.stubEnv("CHAT_NICKNAMES", "철수,비앙카");
+    const res = await POST(req({ pin: "4821", nickname: " 비앙카 " }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "unknown_nickname" });
+    expect(createCustomToken).not.toHaveBeenCalled();
+  });
+});
