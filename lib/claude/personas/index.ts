@@ -1,5 +1,6 @@
 import type { PersonaInfo } from "./info";
 import { bianca } from "./bianca";
+import { lucia } from "./lucia";
 
 /** 서버 전용 페르소나 목록. 프롬프트가 브라우저 번들에 들어가지 않도록 브라우저 컴포넌트에서 import 하지 않는다. */
 export type ReplyText = { refused: string; userLimited: string; dailyLimited: string; failed: string; empty: string };
@@ -16,7 +17,7 @@ export type PersonaConfig = {
   useMemory?: boolean;
 };
 
-export const PERSONA_CONFIGS: readonly PersonaConfig[] = [bianca];
+export const PERSONA_CONFIGS: readonly PersonaConfig[] = [bianca, lucia];
 
 export function getPersonaConfig(id: string): PersonaConfig | null {
   return PERSONA_CONFIGS.find((c) => c.info.id === id) ?? null;

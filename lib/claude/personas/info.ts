@@ -3,6 +3,7 @@ export type PersonaInfo = { id: string; uid: string; nickname: string; trigger: 
 
 export const PERSONAS: readonly PersonaInfo[] = [
   { id: "bianca", uid: "claude", nickname: "비앙카", trigger: "@비앙카", avatar: "/bianca.jpeg" },
+  { id: "lucia", uid: "lucia", nickname: "루치아", trigger: "@루치아", avatar: "/lucia.jpeg" },
 ];
 
 /** 앞뒤 공백을 지운 메시지가 부르는 말로 시작하면 그 페르소나와 질문 본문. 부르는 말이 앞부분을 공유하면 긴 것을 고른다. */
