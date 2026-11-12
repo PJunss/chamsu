@@ -38,7 +38,7 @@ export function ChatMobile(p: ChatViewProps) {
         )}
       </header>
       <MessageList
-        key={p.roomId}
+        key={`list-${p.roomId}`}
         me={p.me}
         messages={p.messages}
         hasOlder={p.hasOlder}
@@ -46,7 +46,7 @@ export function ChatMobile(p: ChatViewProps) {
         typing={p.typing}
       />
       <MessageInput
-        key={p.roomId}
+        key={`input-${p.roomId}`}
         send={p.send}
         offline={p.offline}
         claudeFailed={p.claudeFailed}
