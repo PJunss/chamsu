@@ -21,6 +21,7 @@ export function buildSystemPrompt(room: Room, persona: PersonaConfig): string {
     rules.push(
       "[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.",
       '기억은 원래 알던 것처럼 자연스럽게 말한다. 답에 "[기억]" 같은 표기나 "기억에 따르면", "기록에 따르면" 같은 말을 쓰지 않는다.',
+      "기억 원문을 따옴표로 옮기거나 기억에 붙은 날짜를 읊지 않는다. 날짜는 \"3일 후\" 같은 말을 계산하는 데만 쓰고, 알아낸 내용만 친구가 떠올리듯 말한다.",
     );
   }
   if (persona.useHelper !== false) {
