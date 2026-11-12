@@ -1,9 +1,17 @@
 import { DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
 import type { PersonaConfig } from "@/lib/claude/personas";
+import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
 import type { Room } from "@/lib/claude/rooms";
 
-/** 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다. */
-export function buildSystemPrompt(room: Room, persona: PersonaConfig): string {
+/**
+ * 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다.
+ * 단체방에 자기 말고 다른 봇이 있으면 그 봇을 부르는 규칙을 더한다.
+ */
+export function buildSystemPrompt(
+  room: Room,
+  persona: PersonaConfig,
+  list: readonly PersonaInfo[] = PERSONAS,
+): string {
   const name = persona.info.nickname;
   const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
   const intro = [
@@ -17,6 +25,12 @@ export function buildSystemPrompt(room: Room, persona: PersonaConfig): string {
     "상대를 진짜로 상처 주거나 겁주는 말은 하지 않는다.",
     "답 말고 다른 말(생각, 계획, 도구 설명)은 쓰지 않는다.",
   ];
+  if (room.kind === "group") {
+    const others = list.filter((p) => p.id !== persona.info.id && room.personaIds.includes(p.id)).map((p) => p.nickname);
+    if (others.length > 0) {
+      rules.push(`이 방에는 다른 봇 ${others.join(", ")}도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.`);
+    }
+  }
   if (persona.useMemory !== false) {
     rules.push(
       "[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.",

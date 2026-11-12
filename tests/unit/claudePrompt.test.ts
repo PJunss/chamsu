@@ -51,3 +51,23 @@ test("도우미·기억을 끈 페르소나는 그 규칙이 없고 문장 수�
   expect(p).not.toContain("[기억]");
   expect(p).not.toContain("비앙카");
 });
+
+test("단체방에는 자기 말고 다른 봇을 부르는 규칙이 있다", () => {
+  const p = buildSystemPrompt(main, bianca);
+  expect(p).toContain('- 이 방에는 다른 봇 루치아도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.');
+  expect(p).not.toMatch(/다른 봇 [^\n]*비앙카/);
+});
+
+test("다른 봇이 여럿이면 쉼표로 잇고, 방에 없는 봇은 넣지 않는다", () => {
+  const list = [bianca.info, quiet.info, { ...quiet.info, id: "momo", uid: "bot_momo", nickname: "모모", trigger: "@모모" }];
+  const room: Room = { ...main, personaIds: ["bianca", "kuro", "momo"] };
+  expect(buildSystemPrompt(room, bianca, list)).toContain("이 방에는 다른 봇 쿠로, 모모도 있다.");
+  expect(buildSystemPrompt({ ...room, personaIds: ["bianca", "kuro"] }, bianca, list)).toContain("이 방에는 다른 봇 쿠로도 있다.");
+  expect(buildSystemPrompt({ ...room, personaIds: ["bianca"] }, bianca, list)).not.toContain("이 방에는 다른 봇");
+});
+
+test("1:1 방에는 다른 봇 규칙이 없다", () => {
+  const list = [bianca.info, quiet.info];
+  expect(buildSystemPrompt(dm, quiet, list)).not.toContain("이 방에는 다른 봇");
+  expect(buildSystemPrompt(resolveRoom(`dm_bianca_n_${"0".repeat(32)}`)!, bianca)).not.toContain("이 방에는 다른 봇");
+});
