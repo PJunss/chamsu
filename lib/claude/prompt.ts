@@ -1,18 +1,29 @@
 import { DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
-import type { PersonaConfig } from "@/lib/claude/personas";
+import { affinityBand, displayAffinity } from "@/lib/claude/affinity";
+import type { AffinityTones, PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
 import type { Room } from "@/lib/claude/rooms";
+
+/** 페르소나에 affinityTones 가 없을 때 쓰는 호감도 구간별 말투, 낮은 구간부터. */
+export const DEFAULT_AFFINITY_TONES: AffinityTones = [
+  "상대를 몹시 싫어한다. 차갑고 독하게 쏘아붙이고 깔본다.",
+  "상대가 마음에 들지 않는다. 퉁명스럽고 까칠하게 비꼰다.",
+  "평소 캐릭터대로 대한다.",
+  "상대가 마음에 든다. 평소보다 친근하고 상냥하게 대한다.",
+  "상대를 무척 좋아한다. 다정하고 착하게 대하며 걱정해 주고 속마음도 보인다.",
+];
 
 /**
  * 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다.
  * 단체방에 자기 말고 다른 봇이 있으면 그 봇을 부르는 규칙을 더한다.
+ * affinity 가 있으면 묻는 사람에 대한 호감도와 그 구간의 말투 줄을 규칙 끝에 둔다.
  * guarded 면 기억·도우미 규칙을 빼고, 마지막 메시지를 받아넘기라는 규칙을 맨 끝에 둔다.
  */
 export function buildSystemPrompt(
   room: Room,
   persona: PersonaConfig,
   list: readonly PersonaInfo[] = PERSONAS,
-  opts: { guarded?: boolean } = {},
+  opts: { guarded?: boolean; affinity?: { nickname: string; score: number } } = {},
 ): string {
   const name = persona.info.nickname;
   const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
@@ -49,6 +60,13 @@ export function buildSystemPrompt(
       "잡담, 계산, 기억으로 답할 수 있는 질문에는 ask_helper 를 쓰지 않는다.",
       "ask_helper 질문에는 친구 이름, 대화 원문, 기억을 넣지 않는다. 그 문장만 읽어도 뜻이 통하는 짧은 질문 하나로 쓴다.",
       "도우미 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.",
+    );
+  }
+  if (opts.affinity) {
+    const { nickname, score } = opts.affinity;
+    const tone = (persona.affinityTones ?? DEFAULT_AFFINITY_TONES)[affinityBand(score)];
+    rules.push(
+      `지금 ${nickname}에 대한 너의 호감도는 ${displayAffinity(score)}/100 이다. ${tone} 다른 사람에게는 평소 캐릭터대로 대한다.`,
     );
   }
   if (opts.guarded) {

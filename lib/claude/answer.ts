@@ -14,8 +14,18 @@ export type ModelResponse = { stop_reason: string | null; content: ContentBlock[
 type ToolResult = { type: "tool_result"; tool_use_id: string; content: string };
 type RequestTurn = { role: "user" | "assistant"; content: string | ContentBlock[] | ToolResult[] };
 
-/** guarded 는 Jev 요청 검사에 걸린 질문이다. 도구 없이 한 번만 부르고 받아넘기기 규칙을 더한다. */
-export type AnswerInput = { room: Room; persona: PersonaConfig; history: CtxMessage[]; memories: Memory[]; guarded?: boolean };
+/**
+ * guarded 는 Jev 요청 검사에 걸린 질문이다. 도구 없이 한 번만 부르고 받아넘기기 규칙을 더한다.
+ * affinity 는 묻는 사람에 대한 호감도다. 있으면 그 말투 줄을 프롬프트에 넣는다.
+ */
+export type AnswerInput = {
+  room: Room;
+  persona: PersonaConfig;
+  history: CtxMessage[];
+  memories: Memory[];
+  guarded?: boolean;
+  affinity?: { nickname: string; score: number };
+};
 export type AnswerDeps = {
   create?: (req: object) => Promise<ModelResponse>;
   askHelper?: typeof askHelper;
@@ -36,7 +46,7 @@ const defaultCreate = (req: object) =>
  * guarded 면 도구 없이 한 번만 부른다.
  */
 export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise<string> {
-  const { room, persona, history, memories, guarded = false } = input;
+  const { room, persona, history, memories, guarded = false, affinity } = input;
   const env = deps.env ?? process.env;
   const create = deps.create ?? defaultCreate;
   const ask = deps.askHelper ?? askHelper;
@@ -50,7 +60,7 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
     output_config: { effort: "low" },
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: buildSystemPrompt(room, persona, PERSONAS, { guarded }),
+    system: buildSystemPrompt(room, persona, PERSONAS, { guarded, affinity }),
     ...(useTools ? { tools: [HELPER_TOOL] } : {}),
   };
 

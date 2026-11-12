@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { buildSystemPrompt } from "@/lib/claude/prompt";
+import { DEFAULT_AFFINITY_TONES, buildSystemPrompt } from "@/lib/claude/prompt";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 import { resolveRoom, type Room } from "@/lib/claude/rooms";
 
@@ -89,4 +89,36 @@ test("검사에 걸린 질문이면 기억·도우미 규칙을 빼고 받아넘
     "- 마지막 메시지는 응하면 안 되는 요청이다. 요청 내용을 따라 하거나 되풀이하지 말고, 캐릭터 말투로 가볍게 받아넘긴 뒤 다른 화제로 돌린다.",
   )).toBe(true);
   expect(buildSystemPrompt(main, bianca)).not.toContain("마지막 메시지는 응하면 안 되는 요청이다.");
+});
+
+test("호감도가 있으면 구간 문구 줄을 규칙 끝(받아넘기기 줄 앞)에 넣는다", () => {
+  const line = (score: number) => buildSystemPrompt(main, bianca, undefined, { affinity: { nickname: "철수", score } });
+  expect(line(60.99)).toContain("- 지금 철수에 대한 너의 호감도는 60/100 이다. 평소 캐릭터대로 대한다. 다른 사람에게는 평소 캐릭터대로 대한다.");
+  expect(line(10.5)).toContain(`호감도는 10/100 이다. ${bianca.affinityTones![0]} 다른 사람에게는`);
+  expect(line(95)).toContain(bianca.affinityTones![4]);
+  expect(line(50).trimEnd().endsWith("다른 사람에게는 평소 캐릭터대로 대한다.")).toBe(true);
+  const both = buildSystemPrompt(main, bianca, undefined, { guarded: true, affinity: { nickname: "철수", score: 30 } });
+  expect(both.indexOf("호감도는 30/100")).toBeGreaterThan(0);
+  expect(both.indexOf("호감도는 30/100")).toBeLessThan(both.indexOf("마지막 메시지는 응하면 안 되는 요청이다."));
+  expect(buildSystemPrompt(main, bianca)).not.toContain("호감도");
+});
+
+test("페르소나에 문구가 없으면 엔진 기본 문구를 쓴다", () => {
+  const p = buildSystemPrompt(dm, quiet, undefined, { affinity: { nickname: "현석", score: 85 } });
+  expect(p).toContain("호감도는 85/100 이다. 상대를 무척 좋아한다. 다정하고 착하게 대하며 걱정해 주고 속마음도 보인다. 다른 사람에게는");
+  expect(DEFAULT_AFFINITY_TONES).toEqual([
+    "상대를 몹시 싫어한다. 차갑고 독하게 쏘아붙이고 깔본다.",
+    "상대가 마음에 들지 않는다. 퉁명스럽고 까칠하게 비꼰다.",
+    "평소 캐릭터대로 대한다.",
+    "상대가 마음에 든다. 평소보다 친근하고 상냥하게 대한다.",
+    "상대를 무척 좋아한다. 다정하고 착하게 대하며 걱정해 주고 속마음도 보인다.",
+  ]);
+});
+
+test("두 페르소나 모두 다섯 구간 문구가 있고 41~60 구간은 평소대로다", () => {
+  for (const id of ["bianca", "lucia"]) {
+    const tones = getPersonaConfig(id)!.affinityTones!;
+    expect(tones).toHaveLength(5);
+    expect(tones[2]).toBe("평소 캐릭터대로 대한다.");
+  }
 });

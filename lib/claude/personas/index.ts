@@ -15,7 +15,11 @@ export type PersonaConfig = {
   maxSentences?: number;
   useHelper?: boolean;
   useMemory?: boolean;
+  /** 호감도 구간(0~20, 21~40, 41~60, 61~80, 81~100)별 말투 문구, 낮은 구간부터. 없으면 엔진 기본 문구를 쓴다. */
+  affinityTones?: AffinityTones;
 };
+
+export type AffinityTones = readonly [string, string, string, string, string];
 
 export const PERSONA_CONFIGS: readonly PersonaConfig[] = [bianca, lucia];
 

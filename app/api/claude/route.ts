@@ -4,12 +4,13 @@ import { after } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { answer } from "@/lib/claude/answer";
 import { CHAIN_HEADER, chainOrigin, chainToken, isChainRequest } from "@/lib/claude/chainToken";
-import { CONTEXT_SIZE, DM_SETTLE_MS, QUESTION_TTL_MS } from "@/lib/claude/constants";
+import { AFFINITY_DEFAULT, CONTEXT_SIZE, DM_SETTLE_MS, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
+import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
 import { MAIN_ROOM_ID, pickTargets, resolveRoom } from "@/lib/claude/rooms";
@@ -205,9 +206,32 @@ export async function POST(req: Request) {
         timing.lap(useMemory ? "recall" : "guard");
         if (useMemory) timing.note("recalled", memories.length);
 
+        /** 사람 메시지만 호감도를 정한다. Jev 점수가 있으면 답 만들기 전에 저장하고, 없으면 읽기만 한다. */
+        let affinity: { nickname: string; score: number } | undefined;
+        if (!isBotUid(q.uid)) {
+          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now };
+          let score: number;
+          try {
+            if (checked && "guard" in checked) {
+              const r = await applyAffinity(db, { ...key, pos: checked.pos, neg: checked.neg });
+              score = r.score;
+              timing.note("affinity_delta", r.delta.toFixed(3));
+            } else {
+              score = await readAffinity(db, key);
+            }
+          } catch (e) {
+            console.error("claude affinity failed", `persona=${persona.info.id}`, errName(e));
+            timing.note("affinity_error", errName(e));
+            score = await readAffinity(db, key).catch(() => AFFINITY_DEFAULT);
+          }
+          timing.note("affinity", score.toFixed(3));
+          timing.lap("affinity");
+          affinity = { nickname: q.nickname, score };
+        }
+
         let text: string;
         try {
-          text = await answer({ room, persona, history, memories, guarded }, { onStep: (n, ms) => timing.note(n, ms) });
+          text = await answer({ room, persona, history, memories, guarded, affinity }, { onStep: (n, ms) => timing.note(n, ms) });
           timing.lap("answer");
         } catch (e) {
           timing.lap("answer");
