@@ -15,7 +15,7 @@ vi.mock("firebase-admin/firestore", () => ({
 const answer = vi.fn<(input: AnswerInput) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
 const recallMemories = vi.fn<(db: unknown, room: Room, asker: string, question: string) => Promise<Memory[]>>();
-const rememberSince = vi.fn<(db: unknown, room: Room, untilMs: number) => Promise<{ judged: number; saved: number }>>();
+const rememberSince = vi.fn<(db: unknown, room: Room, until: unknown) => Promise<{ judged: number; saved: number }>>();
 const sleep = vi.fn<(ms: number) => Promise<void>>();
 
 vi.mock("@/lib/claude/answer", () => ({ answer: (input: AnswerInput) => answer(input) }));
@@ -24,7 +24,7 @@ vi.mock("@/lib/claude/limits", () => ({
 }));
 vi.mock("@/lib/claude/memory", () => ({
   recallMemories: (db: unknown, room: Room, asker: string, question: string) => recallMemories(db, room, asker, question),
-  rememberSince: (db: unknown, room: Room, untilMs: number) => rememberSince(db, room, untilMs),
+  rememberSince: (db: unknown, room: Room, until: unknown) => rememberSince(db, room, until),
 }));
 vi.mock("@/lib/claude/sleep", () => ({ sleep: (ms: number) => sleep(ms) }));
 
@@ -145,7 +145,7 @@ describe("POST /api/claude 단체방", () => {
       expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "q" }),
     ]);
     expect(job("q")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "bianca" }));
-    expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: "main" }), NOW - 1000);
+    expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: "main" }), fake.col("messages").get("q")!.createdAt);
   });
   test("질문보다 나중 메시지는 맥락에 넣지 않는다", async () => {
     putMessage("later", "u2", "영희", "나중 말", NOW - 500);
@@ -217,7 +217,7 @@ describe("POST /api/claude 1:1 방", () => {
     expect(botReplies("messages")).toEqual([]);
     expect(job("d1", DM_JOBS)).toEqual(expect.objectContaining({ status: "done", askedBy: OWNER, personaId: "bianca" }));
     expect(job("d1", "claudeJobs")).toBeUndefined();
-    expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: DM }), NOW - 1000);
+    expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: DM }), fake.col(DM_MESSAGES).get("d1")!.createdAt);
   });
 
   test("주인이 아닌 uid 의 메시지는 400", async () => {

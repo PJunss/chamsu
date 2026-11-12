@@ -80,7 +80,7 @@ test("rememberSince: 0.8 이상만 원문 그대로 저장하고 lastJudgedAt �
   putMsg("messages", "m4", "a", "민수", "고수 별로", T0 + 3000);
   putMsg("messages", "m5", "a", "민수", "나중 말", T0 + 9000);
   const askJev = fakeJev({ "내 생일 3월 14일임": 0.8, "고수 별로": 0.79 });
-  const r = await rememberSince(db(), main, T0 + 3000, { askJev, env });
+  const r = await rememberSince(db(), main, Timestamp.fromMillis(T0 + 3000), { askJev, env });
   expect(r).toEqual({ judged: 3, saved: 1 });
   expect(askJev).toHaveBeenCalledTimes(1);
   expect(askJev.mock.calls[0][0]).toBe(main.judgeState);
@@ -117,7 +117,7 @@ test("rememberSince: 지난 판단 이후만 읽고, lastJudgedAt 은 줄지 않
   putMsg("messages", "m2", "a", "민수", "새말", T0 + 1000);
   fake.col("memoryState").set("main", { lastJudgedAt: Timestamp.fromMillis(T0) });
   const askJev = fakeJev({});
-  expect(await rememberSince(db(), main, T0 + 1000, { askJev, env })).toEqual({ judged: 1, saved: 0 });
+  expect(await rememberSince(db(), main, Timestamp.fromMillis(T0 + 1000), { askJev, env })).toEqual({ judged: 1, saved: 0 });
   expect(JSON.stringify(askJev.mock.calls[0][1])).not.toContain("옛말");
   expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 + 1000);
 });
@@ -126,7 +126,7 @@ test("rememberSince: 범위가 비면 아무것도 쓰지 않는다", async () =
   fake.col("memoryState").set("main", { lastJudgedAt: Timestamp.fromMillis(T0) });
   putMsg("messages", "m1", "a", "민수", "옛말", T0);
   const askJev = fakeJev({});
-  expect(await rememberSince(db(), main, T0, { askJev, env })).toEqual({ judged: 0, saved: 0 });
+  expect(await rememberSince(db(), main, Timestamp.fromMillis(T0), { askJev, env })).toEqual({ judged: 0, saved: 0 });
   expect(askJev).not.toHaveBeenCalled();
   expect(fake.col("memories").size).toBe(0);
 });
@@ -134,7 +134,7 @@ test("rememberSince: 범위가 비면 아무것도 쓰지 않는다", async () =
 test("rememberSince: 600개는 300개씩 두 번 판단한다", async () => {
   for (let i = 0; i < 650; i++) putMsg("messages", `m${i}`, "a", "민수", `말${i}`, T0 + i);
   const askJev = fakeJev({ 말60: 0.9 });
-  const r = await rememberSince(db(), main, T0 + 649, { askJev, env });
+  const r = await rememberSince(db(), main, Timestamp.fromMillis(T0 + 649), { askJev, env });
   expect(askJev).toHaveBeenCalledTimes(2);
   expect(Object.keys(askJev.mock.calls[0][1])).toHaveLength(300);
   expect(Object.keys(askJev.mock.calls[1][1])).toHaveLength(300);
@@ -152,7 +152,7 @@ test("rememberSince: 두 번째 묶음이 실패하면 memoryState 를 그대로
     if (++n === 2) throw new Error("jev_500");
     return {};
   });
-  await expect(rememberSince(db(), main, T0 + 599, { askJev, env })).rejects.toThrow("jev_500");
+  await expect(rememberSince(db(), main, Timestamp.fromMillis(T0 + 599), { askJev, env })).rejects.toThrow("jev_500");
   expect((fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp).toMillis()).toBe(T0 - 1);
 });
 
@@ -160,7 +160,7 @@ test("rememberSince: 1:1 방은 그 방 메시지만 읽고 그 방 id 로 저�
   putMsg("messages", "x1", "a", "민수", "단체방 말", T0);
   putMsg(dm.messagesPath, "d1", UID, "현석", "나 다음 달 이직해", T0);
   const askJev = fakeJev({ "나 다음 달 이직해": 0.93, "단체방 말": 0.99 });
-  await rememberSince(db(), dm, T0, { askJev, env });
+  await rememberSince(db(), dm, Timestamp.fromMillis(T0), { askJev, env });
   expect(askJev.mock.calls[0][0]).toBe(dm.judgeState);
   expect(JSON.stringify(askJev.mock.calls)).not.toContain("단체방 말");
   expect([...fake.col("memories").keys()]).toEqual([`${dm.id}_d1`]);
@@ -172,7 +172,7 @@ test("rememberSince: 1:1 방은 그 방 메시지만 읽고 그 방 id 로 저�
 test("rememberSince: 키가 없으면 아무것도 하지 않는다", async () => {
   putMsg("messages", "m1", "a", "민수", "생일 3월", T0);
   const askJev = fakeJev({});
-  expect(await rememberSince(db(), main, T0, { askJev, env: {} as NodeJS.ProcessEnv })).toEqual({ judged: 0, saved: 0 });
+  expect(await rememberSince(db(), main, Timestamp.fromMillis(T0), { askJev, env: {} as NodeJS.ProcessEnv })).toEqual({ judged: 0, saved: 0 });
   expect(askJev).not.toHaveBeenCalled();
 });
 
@@ -213,4 +213,31 @@ test("recallMemories: Jev 가 실패하면 빈 목록", async () => {
     throw new Error("jev_500");
   });
   expect(await recallMemories(db(), main, "민수", "q", { askJev, env })).toEqual([]);
+});
+
+test("rememberSince: 같은 ms 안의 나노초 경계를 자르지 않는다", async () => {
+  const q = new Timestamp(1_800_000_000, 500_000_700);
+  fake.col("messages").set("m1", { uid: "a", nickname: "민수", text: "앞말", createdAt: new Timestamp(1_800_000_000, 500_000_100) });
+  fake.col("messages").set("q", { uid: "a", nickname: "민수", text: "질문", createdAt: q });
+  fake.col("messages").set("later", { uid: "a", nickname: "민수", text: "나중", createdAt: new Timestamp(1_800_000_000, 500_000_900) });
+  const askJev = fakeJev({});
+  expect(await rememberSince(db(), main, q, { askJev, env })).toEqual({ judged: 2, saved: 0 });
+  const sent = JSON.stringify(askJev.mock.calls[0][1]);
+  expect(sent).toContain("민수: 질문");
+  expect(sent).not.toContain("민수: 나중");
+  const saved = fake.col("memoryState").get("main")!.lastJudgedAt as Timestamp;
+  expect(saved.seconds).toBe(1_800_000_000);
+  expect(saved.nanoseconds).toBe(500_000_700);
+
+  askJev.mockClear();
+  expect(await rememberSince(db(), main, q, { askJev, env })).toEqual({ judged: 0, saved: 0 });
+  expect(askJev).not.toHaveBeenCalled();
+});
+
+test("rememberSince: 저장한 기억의 createdAt 은 원래 메시지 Timestamp 그대로", async () => {
+  const t = new Timestamp(1_800_000_000, 123_456_789);
+  fake.col("messages").set("m1", { uid: "a", nickname: "민수", text: "생일 3월", createdAt: t });
+  await rememberSince(db(), main, t, { askJev: fakeJev({ "생일 3월": 0.9 }), env });
+  const c = fake.col("memories").get("main_m1")!.createdAt as Timestamp;
+  expect([c.seconds, c.nanoseconds]).toEqual([1_800_000_000, 123_456_789]);
 });

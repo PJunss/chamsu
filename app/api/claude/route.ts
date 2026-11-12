@@ -123,7 +123,7 @@ export async function POST(req: Request) {
 
       if (useMemory) {
         try {
-          await rememberSince(db, room, q.createdAt.toMillis());
+          await rememberSince(db, room, q.createdAt);
         } catch (e) {
           console.error("remember failed", errName(e));
         }

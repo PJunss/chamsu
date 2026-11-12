@@ -66,6 +66,11 @@ export async function recallMemories(
   }
 }
 
+/** 마이크로초 단위 서버 시각을 ms 로 자르지 않고 비교한다. */
+function compareTimestamps(a: Timestamp, b: Timestamp): number {
+  return a.seconds !== b.seconds ? a.seconds - b.seconds : a.nanoseconds - b.nanoseconds;
+}
+
 export type JudgeMessage = { id: string; uid: string; nickname: string; text: string; createdAtMs: number };
 
 /** 봇 메시지를 뺀 판단 대상과, 대상마다 바로 앞 사람 메시지 최대 2개("닉네임: 본문", 오래된 순). */
@@ -84,13 +89,13 @@ export function judgeRange(
 }
 
 /**
- * 지난 판단 이후 untilMs 까지 그 방의 메시지를 Jev 로 판단해 기억할 것을 원문 그대로 memories 에 복사한다.
+ * 지난 판단 이후 until(질문 메시지 시각, 이하 포함)까지 그 방의 메시지를 Jev 로 판단해 기억할 것을 원문 그대로 memories 에 복사한다.
  * 한 묶음이라도 실패하면 memoryState 를 갱신하지 않고 throw 해 다음 호출이 다시 판단하게 한다.
  */
 export async function rememberSince(
   db: Firestore,
   room: Room,
-  untilMs: number,
+  until: Timestamp,
   deps: Deps = {},
 ): Promise<{ judged: number; saved: number }> {
   const env = deps.env ?? process.env;
@@ -99,7 +104,6 @@ export async function rememberSince(
   const stateRef = db.collection("memoryState").doc(room.id);
   const stateSnap = await stateRef.get();
   const last = stateSnap.exists ? (stateSnap.data()?.lastJudgedAt as Timestamp | undefined) : undefined;
-  const until = Timestamp.fromMillis(untilMs);
   const messages = db.collection(room.messagesPath);
   const docs = last
     ? (
@@ -123,6 +127,7 @@ export async function rememberSince(
       createdAtMs: (x.createdAt as Timestamp).toMillis(),
     };
   });
+  const stamps = new Map(docs.map((d) => [d.id, d.data().createdAt as Timestamp]));
   const { targets, context } = judgeRange(range, (uid) => isBotUid(uid));
 
   let saved = 0;
@@ -148,7 +153,7 @@ export async function rememberSince(
             context: context.get(m.id) ?? [],
             roomId: room.id,
             messageId: m.id,
-            createdAt: Timestamp.fromMillis(m.createdAtMs),
+            createdAt: stamps.get(m.id)!,
             score,
           }),
       ),
@@ -156,12 +161,12 @@ export async function rememberSince(
     saved += keep.length;
   }
 
-  const endMs = range[range.length - 1].createdAtMs;
+  const end = stamps.get(range[range.length - 1].id)!;
   await db.runTransaction(async (tx) => {
     const cur = await tx.get(stateRef);
     const prev = cur.exists ? (cur.data()?.lastJudgedAt as Timestamp | undefined) : undefined;
-    if (prev && prev.toMillis() >= endMs) return;
-    tx.set(stateRef, { lastJudgedAt: Timestamp.fromMillis(endMs) });
+    if (prev && compareTimestamps(prev, end) >= 0) return;
+    tx.set(stateRef, { lastJudgedAt: end });
   });
   return { judged: targets.length, saved };
 }

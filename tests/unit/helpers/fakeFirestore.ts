@@ -10,7 +10,14 @@ const value = (v: unknown): unknown =>
       ? v.getTime()
       : v;
 
+type Stamp = { seconds: number; nanoseconds: number };
+const isStamp = (v: unknown): v is Stamp =>
+  !!v && typeof v === "object" && typeof (v as Stamp).seconds === "number" && typeof (v as Stamp).nanoseconds === "number";
+
 function compare(a: unknown, b: unknown): number {
+  if (isStamp(a) && isStamp(b)) {
+    return a.seconds !== b.seconds ? a.seconds - b.seconds : a.nanoseconds - b.nanoseconds;
+  }
   const x = value(a) as number | string;
   const y = value(b) as number | string;
   return x < y ? -1 : x > y ? 1 : 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
 import { useMessages } from "@/components/chat/useMessages";
@@ -42,6 +42,11 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
   const online = usePresence(uid, nickname);
   const typing = useClaudeTyping(room.jobsPath);
   const [claudeFailed, setClaudeFailed] = useState<string | null>(null);
+  /** 늦게 도착한 호출 실패가 다른 방에 표시되지 않도록 지금 보고 있는 방 id 를 둔다. */
+  const currentRoom = useRef(roomId);
+  useEffect(() => {
+    currentRoom.current = roomId;
+  }, [roomId]);
 
   const selectRoom = useCallback((next: string) => {
     setRoomId(next);
@@ -59,8 +64,9 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
         setClaudeFailed(null);
         const callee = room.kind === "dm" ? dmPersona : (findPersonaByTrigger(text)?.persona ?? null);
         if (callee) {
-          void callClaude(room.id, ref.id).then((ok) => {
-            if (!ok) setClaudeFailed(callee.nickname);
+          const sentRoom = room.id;
+          void callClaude(sentRoom, ref.id).then((ok) => {
+            if (!ok && currentRoom.current === sentRoom) setClaudeFailed(callee.nickname);
           });
         }
         return true;

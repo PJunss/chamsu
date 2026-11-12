@@ -34,6 +34,8 @@ export function useMessages(messagesPath: string) {
   const [offline, setOffline] = useState(false);
   const snapshots = useRef(new Map<string, QueryDocumentSnapshot>());
   const loading = useRef(false);
+  /** 경로가 바뀔 때마다 늘어난다. 이전 방에서 시작한 loadOlder 결과를 버리는 데 쓴다. */
+  const generation = useRef(0);
 
   if (path !== messagesPath) {
     setPath(messagesPath);
@@ -43,6 +45,8 @@ export function useMessages(messagesPath: string) {
   }
 
   useEffect(() => {
+    generation.current += 1;
+    loading.current = false;
     snapshots.current = new Map();
     const q = query(collection(getClientDb(), messagesPath), orderBy("createdAt", "desc"), limit(PAGE_SIZE));
     return onSnapshot(
@@ -65,6 +69,7 @@ export function useMessages(messagesPath: string) {
     const cursor = oldestId ? snapshots.current.get(oldestId) : undefined;
     if (loading.current || !cursor) return;
     loading.current = true;
+    const gen = generation.current;
     try {
       const q = query(
         collection(getClientDb(), messagesPath),
@@ -73,11 +78,12 @@ export function useMessages(messagesPath: string) {
         limit(PAGE_SIZE),
       );
       const snap = await getDocs(q);
+      if (gen !== generation.current) return;
       for (const d of snap.docs) snapshots.current.set(d.id, d);
       if (snap.docs.length < PAGE_SIZE) setExhausted(true);
       setWin((prev) => prependOlder(prev, snap.docs.map(toMessage).reverse()));
     } finally {
-      loading.current = false;
+      if (gen === generation.current) loading.current = false;
     }
   }, [oldestId, messagesPath]);
 
