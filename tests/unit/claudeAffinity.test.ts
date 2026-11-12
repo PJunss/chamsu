@@ -14,6 +14,8 @@ test("상수", () => {
   expect(constants.AFFINITY_GAIN).toBe(1.0);
   expect(constants.AFFINITY_LOSS).toBe(1.5);
   expect(constants.AFFINITY_GAIN_COOLDOWN_MS).toBe(600_000);
+  expect(constants.AFFINITY_NOISE).toBe(0.1);
+  expect(constants.AFFINITY_GAIN_MIN).toBe(0.5);
   expect("AFFINITY_MAX_DELTA" in constants).toBe(false);
 });
 
@@ -32,7 +34,7 @@ test("변화량: 오르기는 현재 값에 비례해 어렵고, 내리기는 1.
   expect(affinityDelta(80, 0.98, 0, null, T0)).toBeCloseTo(0.196, 10);
   expect(affinityDelta(50, 0, 0.97, null, T0)).toBeCloseTo(-1.455, 10);
   expect(affinityDelta(100, 1, 0, null, T0)).toBe(0);
-  expect(affinityDelta(50, 0.97, 0.02, null, T0)).toBeCloseTo(0.455, 10);
+  expect(affinityDelta(50, 0.97, 0.2, null, T0)).toBeCloseTo(0.185, 10);
 });
 
 test("화면·구간은 소수점을 버린 정수: 49.6 은 49, 60.99 는 41~60 구간", () => {
@@ -137,4 +139,38 @@ test("호의·적대 점수는 0~1 로 잘라 쓴다", () => {
   expect(affinityDelta(50, -0.5, 0, null, T0)).toBe(0);
   expect(affinityDelta(50, 0, 2, null, T0)).toBe(affinityDelta(50, 0, 1, null, T0));
   expect(affinityDelta(50, 0, -1, null, T0)).toBe(0);
+});
+
+test("0.1 미만 점수는 잡음으로 0 이다", () => {
+  expect(affinityDelta(50, 0.07, 0.01, null, T0)).toBe(0);
+  expect(affinityDelta(50, 0.09, 0, null, T0)).toBe(0);
+  expect(affinityDelta(50, 0.1, 0, null, T0)).toBeCloseTo(0.05, 10);
+  expect(affinityDelta(50, 0.97, 0.02, null, T0)).toBeCloseTo(0.485, 10);
+});
+
+test("실제 사례: 반가워는 변화 없음, 15초 뒤 멋지네는 오르고 간격을 시작한다", async () => {
+  fake.col("affinity").set("main_bianca_n_a", { ...key, score: 50, updatedAt: Timestamp.fromMillis(T0 - DAY), lastGainAt: null });
+  const hello = await applyAffinity(db(), { ...key, pos: 0.07, neg: 0.01, now: T0 });
+  expect(hello.delta).toBe(0);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toBeNull();
+  const nice = await applyAffinity(db(), { ...key, pos: 0.97, neg: 0.02, now: T0 + 15_000 });
+  expect(nice.delta).toBeCloseTo(0.485, 10);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0 + 15_000));
+});
+
+test("약한 호의(0.3)는 오르지만 간격을 시작하지 않아, 바로 뒤 강한 호의도 오른다", async () => {
+  const weak = await applyAffinity(db(), { ...key, pos: 0.3, neg: 0, now: T0 });
+  expect(weak.delta).toBeCloseTo(0.15, 10);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toBeNull();
+  const strong = await applyAffinity(db(), { ...key, pos: 0.97, neg: 0, now: T0 + 15_000 });
+  expect(strong.delta).toBeGreaterThan(0.4);
+  expect(fake.col("affinity").get("main_bianca_n_a")?.lastGainAt).toEqual(Timestamp.fromMillis(T0 + 15_000));
+});
+
+test("startsGainCooldown: 호의 0.5 이상이고 실제로 올랐을 때만", async () => {
+  const { startsGainCooldown } = await import("@/lib/claude/affinity");
+  expect(startsGainCooldown(0.5, 0.1)).toBe(true);
+  expect(startsGainCooldown(0.49, 0.1)).toBe(false);
+  expect(startsGainCooldown(0.97, 0)).toBe(false);
+  expect(startsGainCooldown(0.97, -1)).toBe(false);
 });

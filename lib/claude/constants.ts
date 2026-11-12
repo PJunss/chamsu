@@ -29,6 +29,10 @@ export const AFFINITY_GAIN = 1.0;
 export const AFFINITY_LOSS = 1.5;
 /** 호감도가 마지막으로 오른 뒤 이 시간 안에는 호의 몫을 0 으로 본다. */
 export const AFFINITY_GAIN_COOLDOWN_MS = 10 * 60_000;
+/** 0~1 로 자른 호의·적대 점수가 이 값 미만이면 잡음으로 보고 0 으로 친다. */
+export const AFFINITY_NOISE = 0.1;
+/** 호의 점수가 이 값 이상으로 올랐을 때만 AFFINITY_GAIN_COOLDOWN_MS 간격을 새로 시작한다. */
+export const AFFINITY_GAIN_MIN = 0.5;
 export const DM_SETTLE_MS = 1_500;
 /** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
 export const BOT_CHAIN_MAX = 3;

@@ -1,5 +1,6 @@
 import {
-  AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_GAIN_COOLDOWN_MS, AFFINITY_LOSS,
+  AFFINITY_DECAY_PER_DAY, AFFINITY_DEFAULT, AFFINITY_GAIN, AFFINITY_GAIN_COOLDOWN_MS, AFFINITY_GAIN_MIN, AFFINITY_LOSS,
+  AFFINITY_NOISE,
 } from "@/lib/claude/constants";
 
 /** 호감도 계산. firebase 를 쓰지 않아 서버와 화면이 같이 쓴다. 저장값은 소수이고, 화면·프롬프트·구간은 버린 정수를 쓴다. */
@@ -26,7 +27,7 @@ export function effectiveAffinity(score: number, updatedAtMs: number, nowMs: num
 /**
  * Jev 의 호의·적대 점수(0~1)와 복귀를 반영한 현재 값으로 정한 변화량(소수, 반올림하지 않음).
  * AFFINITY_GAIN × 호의 × (100 − 현재) / 100 − AFFINITY_LOSS × 적대. 높을수록 덜 오르고, 내리기는 쉽다.
- * 호의·적대 점수는 0~1 로 잘라 쓴다. 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
+ * 호의·적대 점수는 0~1 로 자르고, AFFINITY_NOISE 미만이면 0 으로 본다. 마지막으로 오른 시각(lastGainAtMs)에서 AFFINITY_GAIN_COOLDOWN_MS 가 지나지 않았으면 호의 몫은 0 이다.
  */
 export function affinityDelta(
   current: number,
@@ -36,8 +37,18 @@ export function affinityDelta(
   nowMs: number,
 ): number {
   const cooling = lastGainAtMs !== null && nowMs - lastGainAtMs < AFFINITY_GAIN_COOLDOWN_MS;
-  const gain = cooling ? 0 : (AFFINITY_GAIN * clamp01(pos) * (100 - current)) / 100;
-  return gain - AFFINITY_LOSS * clamp01(neg);
+  const gain = cooling ? 0 : (AFFINITY_GAIN * denoise(pos) * (100 - current)) / 100;
+  return gain - AFFINITY_LOSS * denoise(neg);
+}
+
+function denoise(v: number): number {
+  const c = clamp01(v);
+  return c < AFFINITY_NOISE ? 0 : c;
+}
+
+/** 이 변화로 오르기 간격(lastGainAt)을 새로 시작하는지. 호의가 AFFINITY_GAIN_MIN 이상이고 실제로 올랐을 때만이다. */
+export function startsGainCooldown(pos: number, delta: number): boolean {
+  return clamp01(pos) >= AFFINITY_GAIN_MIN && delta > 0;
 }
 
 /** 화면과 프롬프트에 쓰는 정수(소수점 버림). */

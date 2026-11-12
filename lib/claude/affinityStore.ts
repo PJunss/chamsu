@@ -1,5 +1,5 @@
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
-import { affinityDelta, affinityDocId, clampAffinity, effectiveAffinity } from "@/lib/claude/affinity";
+import { affinityDelta, affinityDocId, clampAffinity, effectiveAffinity, startsGainCooldown } from "@/lib/claude/affinity";
 import { AFFINITY_DEFAULT } from "@/lib/claude/constants";
 
 export type AffinityKey = { roomId: string; personaId: string; uid: string };
@@ -20,7 +20,7 @@ export async function readAffinity(db: Firestore, key: AffinityKey & { now: numb
 
 /**
  * 트랜잭션으로 복귀를 반영한 현재 값에서 호의·적대 점수로 변화량을 구해 더하고, 0~100 으로 잘라 소수 그대로 저장한다.
- * 변화량이 0 보다 클 때만 lastGainAt 을 now 로 바꾸고, 아니면 그대로 둔다. 새 값과 적용한 변화량을 돌려준다.
+ * 호의가 AFFINITY_GAIN_MIN 이상이고 변화량이 0 보다 클 때만 lastGainAt 을 now 로 바꾸고, 아니면 그대로 둔다. 새 값과 적용한 변화량을 돌려준다.
  */
 export async function applyAffinity(
   db: Firestore,
@@ -42,7 +42,7 @@ export async function applyAffinity(
       uid,
       score,
       updatedAt: Timestamp.fromMillis(now),
-      lastGainAt: delta > 0 ? Timestamp.fromMillis(now) : lastGain,
+      lastGainAt: startsGainCooldown(pos, delta) ? Timestamp.fromMillis(now) : lastGain,
     });
     return { score, delta: score - current };
   });
