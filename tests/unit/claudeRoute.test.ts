@@ -51,8 +51,9 @@ function putMessage(id: string, uid: string, nickname: string, text: string, ms:
   fake.col(path).set(id, { uid, nickname, text, createdAt: ts(ms) });
 }
 
+const BOT_UIDS = ["claude", "bot_lucia"];
 const botReplies = (path = "messages") =>
-  [...fake.col(path).values()].filter((m: Data) => m.uid === "claude" && m.replyTo !== undefined);
+  [...fake.col(path).values()].filter((m: Data) => BOT_UIDS.includes(m.uid as string) && m.replyTo !== undefined);
 const job = (id: string, path = "claudeJobs") => fake.col(path).get(id);
 
 beforeEach(() => {
@@ -113,7 +114,7 @@ describe("POST /api/claude 단체방", () => {
     expect(consumeClaudeQuota).toHaveBeenCalledWith("u1", NOW);
     expect(answer).not.toHaveBeenCalled();
     expect(botReplies()).toEqual([expect.objectContaining({ text: REPLY_TEXT.userLimited, replyTo: "q" })]);
-    expect(job("q")?.status).toBe("done");
+    expect(job("q_bianca")?.status).toBe("done");
   });
   test("방 전체 한도를 넘으면 429 daily_limited", async () => {
     consumeClaudeQuota.mockResolvedValue("daily");
@@ -129,7 +130,7 @@ describe("POST /api/claude 단체방", () => {
     recallMemories.mockResolvedValue(memories);
     const res = await POST(req({ messageId: "q" }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, personas: ["bianca"] });
     expect(sleep).not.toHaveBeenCalled();
     const [db, room, asker, question] = recallMemories.mock.calls[0];
     expect(db).toBe(fake.db);
@@ -142,9 +143,9 @@ describe("POST /api/claude 단체방", () => {
     expect(input.memories).toBe(memories);
     expect(input.history.map((m) => m.id)).toEqual(["a", "c", "q"]);
     expect(botReplies()).toEqual([
-      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "q" }),
+      expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "q", chainDepth: 1, chainRootUid: "u1" }),
     ]);
-    expect(job("q")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "bianca" }));
+    expect(job("q_bianca")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "bianca" }));
     expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: "main" }), fake.col("messages").get("q")!.createdAt);
   });
   test("질문보다 나중 메시지는 맥락에 넣지 않는다", async () => {
@@ -166,7 +167,7 @@ describe("POST /api/claude 단체방", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "claude_failed" });
     expect(botReplies()).toEqual([expect.objectContaining({ text: REPLY_TEXT.failed, replyTo: "q" })]);
-    expect(job("q")?.status).toBe("failed");
+    expect(job("q_bianca")?.status).toBe("failed");
     expect(rememberSince).not.toHaveBeenCalled();
   });
   test("기억 고르기가 throw 해도 기억 없이 답한다", async () => {
@@ -179,7 +180,7 @@ describe("POST /api/claude 단체방", () => {
     const res = await POST(req({ messageId: "q" }));
     expect(res.status).toBe(200);
     expect(botReplies()).toEqual([expect.objectContaining({ text: "반가워" })]);
-    expect(job("q")?.status).toBe("done");
+    expect(job("q_bianca")?.status).toBe("done");
   });
   test("답을 쓴 뒤 job 갱신이 실패해도 200 이고 실패 문구를 더 쓰지 않는다", async () => {
     failJobUpdate = true;
@@ -192,7 +193,104 @@ describe("POST /api/claude 단체방", () => {
     const res = await POST(req({ messageId: "q" }));
     expect(res.status).toBe(500);
     expect(answer).not.toHaveBeenCalled();
-    expect(job("q")?.status).toBe("failed");
+    expect(job("q_bianca")?.status).toBe("failed");
+  });
+});
+
+describe("POST /api/claude 단체방 여러 봇과 연쇄", () => {
+  const LUCIA_TEXT = getPersonaConfig("lucia")!.replyText;
+  beforeEach(() => {
+    putMessage("m2", "u1", "철수", "@비앙카 @루치아 안녕", NOW - 1000);
+    answer.mockImplementation(async (input) => `${input.persona.info.nickname} 답`);
+  });
+
+  test("두 봇을 부른 메시지는 봇마다 작업을 만들고 따로 답한다", async () => {
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, personas: ["bianca", "lucia"] });
+    expect(answer).toHaveBeenCalledTimes(2);
+    for (const call of answer.mock.calls) expect(call[0].history.map((m) => m.id)).toEqual(["q", "m2"]);
+    expect(botReplies()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "비앙카 답", uid: "claude", replyTo: "m2", chainDepth: 1, chainRootUid: "u1" }),
+        expect.objectContaining({ text: "루치아 답", uid: "bot_lucia", replyTo: "m2", chainDepth: 1, chainRootUid: "u1" }),
+      ]),
+    );
+    expect(botReplies()).toHaveLength(2);
+    expect(job("m2_bianca")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "bianca" }));
+    expect(job("m2_lucia")).toEqual(expect.objectContaining({ status: "done", askedBy: "u1", personaId: "lucia" }));
+    expect(job("m2")).toBeUndefined();
+    expect(rememberSince).toHaveBeenCalledTimes(1);
+  });
+
+  test("한 봇만 이미 작업이 있으면 다른 봇만 답하고 200", async () => {
+    fake.col("claudeJobs").set("m2_bianca", { status: "pending", personaId: "bianca" });
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, personas: ["lucia"] });
+    expect(botReplies()).toEqual([expect.objectContaining({ uid: "bot_lucia", replyTo: "m2" })]);
+  });
+
+  test("두 봇 모두 이미 작업이 있으면 409 이고 답하지 않는다", async () => {
+    fake.col("claudeJobs").set("m2_bianca", { status: "pending" });
+    fake.col("claudeJobs").set("m2_lucia", { status: "pending" });
+    expect((await POST(req({ messageId: "m2" }))).status).toBe(409);
+    expect(answer).not.toHaveBeenCalled();
+    expect(rememberSince).not.toHaveBeenCalled();
+  });
+
+  test("한 봇이 답에 실패하면 그 봇만 실패 안내를 쓰고 나머지는 답한다", async () => {
+    answer.mockImplementation(async (input) => {
+      if (input.persona.info.id === "bianca") throw new Error("boom");
+      return "루치아 답";
+    });
+    const res = await POST(req({ messageId: "m2" }));
+    expect(res.status).toBe(200);
+    expect(botReplies()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ uid: "claude", text: REPLY_TEXT.failed, chainDepth: 1, chainRootUid: "u1" }),
+        expect.objectContaining({ uid: "bot_lucia", text: "루치아 답" }),
+      ]),
+    );
+    expect(job("m2_bianca")?.status).toBe("failed");
+    expect(job("m2_lucia")?.status).toBe("done");
+    expect(rememberSince).toHaveBeenCalledTimes(1);
+  });
+
+  test("두 봇 모두 답에 실패하면 502", async () => {
+    answer.mockRejectedValue(new Error("boom"));
+    expect((await POST(req({ messageId: "m2" }))).status).toBe(502);
+    expect(botReplies().map((m) => m.text).sort()).toEqual([LUCIA_TEXT.failed, REPLY_TEXT.failed].sort());
+    expect(rememberSince).not.toHaveBeenCalled();
+  });
+
+  test("봇 메시지 chainDepth 3 이면 다른 봇이 단계 4 로 답하고 연쇄 시작 사람을 이어받는다", async () => {
+    fake.col("messages").set("b3", {
+      uid: "claude", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 3, chainRootUid: "u1",
+    });
+    const res = await POST(req({ messageId: "b3" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, personas: ["lucia"] });
+    expect(consumeClaudeQuota).toHaveBeenCalledWith("u1", NOW);
+    expect(job("b3_lucia")).toEqual(expect.objectContaining({ askedBy: "u1", personaId: "lucia" }));
+    expect(botReplies().filter((m) => m.replyTo === "b3")).toEqual([
+      expect.objectContaining({ uid: "bot_lucia", chainDepth: 4, chainRootUid: "u1" }),
+    ]);
+  });
+
+  test("봇 메시지 chainDepth 4 는 400 이고 답하지 않는다", async () => {
+    fake.col("messages").set("b4", {
+      uid: "claude", nickname: "비앙카", text: "@루치아 너는?", createdAt: ts(NOW - 500), chainDepth: 4, chainRootUid: "u1",
+    });
+    expect((await POST(req({ messageId: "b4" }))).status).toBe(400);
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  test("봇이 자기 자신만 부른 메시지는 400", async () => {
+    fake.col("messages").set("self", {
+      uid: "claude", nickname: "비앙카", text: "나 @비앙카 야", createdAt: ts(NOW - 500), chainDepth: 1, chainRootUid: "u1",
+    });
+    expect((await POST(req({ messageId: "self" }))).status).toBe(400);
   });
 });
 
@@ -215,8 +313,8 @@ describe("POST /api/claude 1:1 방", () => {
       expect.objectContaining({ text: "반가워", nickname: "비앙카", uid: "claude", replyTo: "d1" }),
     ]);
     expect(botReplies("messages")).toEqual([]);
-    expect(job("d1", DM_JOBS)).toEqual(expect.objectContaining({ status: "done", askedBy: OWNER, personaId: "bianca" }));
-    expect(job("d1", "claudeJobs")).toBeUndefined();
+    expect(job("d1_bianca", DM_JOBS)).toEqual(expect.objectContaining({ status: "done", askedBy: OWNER, personaId: "bianca" }));
+    expect(job("d1_bianca", "claudeJobs")).toBeUndefined();
     expect(rememberSince).toHaveBeenCalledWith(fake.db, expect.objectContaining({ id: DM }), fake.col(DM_MESSAGES).get("d1")!.createdAt);
   });
 
@@ -239,7 +337,7 @@ describe("POST /api/claude 1:1 방", () => {
     expect(await res.json()).toEqual({ skipped: true });
     expect(answer).not.toHaveBeenCalled();
     expect(consumeClaudeQuota).not.toHaveBeenCalled();
-    expect(job("d1", DM_JOBS)?.status).toBe("skipped");
+    expect(job("d1_bianca", DM_JOBS)?.status).toBe("skipped");
     expect(botReplies(DM_MESSAGES)).toEqual([]);
   });
 
