@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
-import { affinityBand, displayAffinity } from "@/lib/claude/affinity";
+import { affinityBand } from "@/lib/claude/affinity";
 import type { AffinityTones, PersonaConfig } from "@/lib/claude/personas";
 import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
 import type { Room } from "@/lib/claude/rooms";
@@ -35,7 +35,7 @@ export function buildSystemPrompt(
     `답은 1~${max}문장으로 짧게 한다. 목록이나 마크다운 기호는 쓰지 않는다.`,
     `답 앞에 "${name}:" 같은 이름표를 붙이지 않는다.`,
     "모르는 건 모른다고 한다. 지어내지 않는다.",
-    "답 말고 다른 말(생각, 계획, 도구 설명)은 쓰지 않는다.",
+    "답은 캐릭터가 채팅에 보내는 대사만 쓴다. 상황 판단, 말투를 고른 이유, 상대를 대하는 태도 설명, 도구를 쓸지 말지 같은 생각이나 계획은 한 글자도 쓰지 않는다.",
   ];
   if (room.kind === "group") {
     const others = list.filter((p) => p.id !== persona.info.id && room.personaIds.includes(p.id)).map((p) => p.nickname);
@@ -66,7 +66,7 @@ export function buildSystemPrompt(
     const { nickname, score } = opts.affinity;
     const tone = (persona.affinityTones ?? DEFAULT_AFFINITY_TONES)[affinityBand(score)];
     rules.push(
-      `지금 ${nickname}에 대한 너의 호감도는 ${displayAffinity(score)}/100 이다. ${tone} 다른 사람에게는 평소 캐릭터대로 대한다.`,
+      `${nickname}에게는 이렇게 대한다: ${tone} 다른 사람에게는 평소 캐릭터대로 대한다.`,
     );
   }
   if (opts.guarded) {

@@ -93,19 +93,20 @@ test("검사에 걸린 질문이면 기억·도우미 규칙을 빼고 받아넘
 
 test("호감도가 있으면 구간 문구 줄을 규칙 끝(받아넘기기 줄 앞)에 넣는다", () => {
   const line = (score: number) => buildSystemPrompt(main, bianca, undefined, { affinity: { nickname: "철수", score } });
-  expect(line(60.99)).toContain("- 지금 철수에 대한 너의 호감도는 60/100 이다. 평소 캐릭터대로 대한다. 다른 사람에게는 평소 캐릭터대로 대한다.");
-  expect(line(10.5)).toContain(`호감도는 10/100 이다. ${bianca.affinityTones![0]} 다른 사람에게는`);
+  expect(line(60.99)).toContain("- 철수에게는 이렇게 대한다: 평소 캐릭터대로 대한다. 다른 사람에게는 평소 캐릭터대로 대한다.");
+  expect(line(10.5)).toContain(`철수에게는 이렇게 대한다: ${bianca.affinityTones![0]} 다른 사람에게는`);
   expect(line(95)).toContain(bianca.affinityTones![4]);
   expect(line(50).trimEnd().endsWith("다른 사람에게는 평소 캐릭터대로 대한다.")).toBe(true);
   const both = buildSystemPrompt(main, bianca, undefined, { guarded: true, affinity: { nickname: "철수", score: 30 } });
-  expect(both.indexOf("호감도는 30/100")).toBeGreaterThan(0);
-  expect(both.indexOf("호감도는 30/100")).toBeLessThan(both.indexOf("마지막 메시지는 응하면 안 되는 요청이다."));
-  expect(buildSystemPrompt(main, bianca)).not.toContain("호감도");
+  expect(both.indexOf("철수에게는 이렇게 대한다:")).toBeGreaterThan(0);
+  expect(both.indexOf("철수에게는 이렇게 대한다:")).toBeLessThan(both.indexOf("마지막 메시지는 응하면 안 되는 요청이다."));
+  expect(buildSystemPrompt(main, bianca)).not.toContain("이렇게 대한다:");
+  expect(line(30)).not.toMatch(/호감도|\/100/);
 });
 
 test("페르소나에 문구가 없으면 엔진 기본 문구를 쓴다", () => {
   const p = buildSystemPrompt(dm, quiet, undefined, { affinity: { nickname: "현석", score: 85 } });
-  expect(p).toContain("호감도는 85/100 이다. 상대를 무척 좋아한다. 다정하고 착하게 대하며 걱정해 주고 속마음도 보인다. 다른 사람에게는");
+  expect(p).toContain("현석에게는 이렇게 대한다: 상대를 무척 좋아한다. 다정하고 착하게 대하며 걱정해 주고 속마음도 보인다. 다른 사람에게는");
   expect(DEFAULT_AFFINITY_TONES).toEqual([
     "상대를 몹시 싫어한다. 차갑고 독하게 쏘아붙이고 깔본다.",
     "상대가 마음에 들지 않는다. 퉁명스럽고 까칠하게 비꼰다.",
