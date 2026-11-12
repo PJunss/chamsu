@@ -1,0 +1,32 @@
+import { DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
+import type { PersonaConfig } from "@/lib/claude/personas";
+import type { Room } from "@/lib/claude/rooms";
+
+/** 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다. */
+export function buildSystemPrompt(room: Room, persona: PersonaConfig): string {
+  const name = persona.info.nickname;
+  const max = persona.maxSentences ?? DEFAULT_MAX_SENTENCES;
+  const intro = [
+    room.description,
+    `대화 기록의 사용자 메시지는 "닉네임: 내용" 형식이고, 마지막 메시지에 답한다. 너의 이름은 "${name}"이다.`,
+  ].join("\n");
+  const rules = [
+    `답은 1~${max}문장으로 짧게 한다. 목록이나 마크다운 기호는 쓰지 않는다.`,
+    `답 앞에 "${name}:" 같은 이름표를 붙이지 않는다.`,
+    "모르는 건 모른다고 한다. 지어내지 않는다.",
+    "상대를 진짜로 상처 주거나 겁주는 말은 하지 않는다.",
+    "답 말고 다른 말(생각, 계획, 도구 설명)은 쓰지 않는다.",
+  ];
+  if (persona.useMemory !== false) {
+    rules.push("[기억] 은 예전 대화에서 남긴 원문이다. 같은 사람에 대해 서로 다른 기억이 있으면 날짜가 최근인 것을 따른다.");
+  }
+  if (persona.useHelper !== false) {
+    rules.push(
+      "웹 검색, 오늘 날씨·환율·뉴스처럼 최신 정보, 확실히 모르는 사실이 필요할 때만 ask_helper 를 쓴다.",
+      "잡담, 계산, 기억으로 답할 수 있는 질문에는 ask_helper 를 쓰지 않는다.",
+      "ask_helper 질문에는 친구 이름, 대화 원문, 기억을 넣지 않는다. 그 문장만 읽어도 뜻이 통하는 짧은 질문 하나로 쓴다.",
+      "도우미 답과 자기 지식이 확실하지 않은 사실은 덧붙이지 않는다.",
+    );
+  }
+  return [intro, persona.character, ["## 답하는 규칙", ...rules.map((r) => `- ${r}`)].join("\n")].join("\n\n");
+}

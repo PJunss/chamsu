@@ -93,14 +93,16 @@ vi.mock("firebase-admin/firestore", () => ({
 const askClaude = vi.fn<(m: { role: string; content: string }[]) => Promise<string>>();
 const consumeClaudeQuota = vi.fn<(uid: string, now: number) => Promise<"ok" | "user" | "daily">>();
 vi.mock("@/lib/claude/client", () => ({
-  askClaude: (_system: string, m: { role: string; content: string }[]) => askClaude(m),
+  askClaude: (_persona: unknown, _system: string, m: { role: string; content: string }[]) => askClaude(m),
 }));
 vi.mock("@/lib/claude/limits", () => ({
   consumeClaudeQuota: (uid: string, now: number) => consumeClaudeQuota(uid, now),
 }));
 
 import { POST } from "@/app/api/claude/route";
-import { REPLY_TEXT } from "@/lib/claude/reply";
+import { getPersonaConfig } from "@/lib/claude/personas";
+
+const REPLY_TEXT = getPersonaConfig("bianca")!.replyText;
 
 const NOW = Date.UTC(2026, 10, 11, 3, 0);
 

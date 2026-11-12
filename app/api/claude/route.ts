@@ -5,7 +5,8 @@ import { askClaude } from "@/lib/claude/client";
 import { CONTEXT_SIZE, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import { buildClaudeMessages, type CtxMessage } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
-import { REPLY_TEXT } from "@/lib/claude/reply";
+import { buildSystemPrompt } from "@/lib/claude/prompt";
+import { resolveRoom } from "@/lib/claude/rooms";
 import { getPersonaConfig } from "@/lib/claude/personas";
 import { findPersonaByTrigger, isBotUid } from "@/lib/claude/personas/info";
 
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
     try {
       const quota = await consumeClaudeQuota(q.uid, now);
       if (quota !== "ok") {
-        await reply(quota === "user" ? REPLY_TEXT.userLimited : REPLY_TEXT.dailyLimited);
+        await reply(quota === "user" ? persona.replyText.userLimited : persona.replyText.dailyLimited);
         await markJob("done");
         return fail(quota === "user" ? "user_limited" : "daily_limited", 429);
       }
@@ -84,10 +85,10 @@ export async function POST(req: Request) {
 
       let answer: string;
       try {
-        answer = await askClaude(persona.character, buildClaudeMessages(history));
+        answer = await askClaude(persona, buildSystemPrompt(resolveRoom("main")!, persona), buildClaudeMessages(history, persona.info.uid));
       } catch (e) {
         console.error("claude failed", ...describeError(e));
-        await reply(REPLY_TEXT.failed);
+        await reply(persona.replyText.failed);
         await markJob("failed");
         return fail("claude_failed", 502);
       }
