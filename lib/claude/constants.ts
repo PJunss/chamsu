@@ -35,6 +35,10 @@ export const AFFINITY_NOISE = 0.1;
 export const AFFINITY_NEG_MIN = 0.55;
 /** 웃음 표시(ㅋㅋ·ㅎㅎ 등)가 있는 메시지의 적대 점수에 곱하는 값. 가드레일에 걸린 메시지에는 쓰지 않는다. */
 export const AFFINITY_LAUGH_FACTOR = 0.5;
+/** 위협 표현이 있고 Jev 협박 점수가 이 이상이면 협박으로 본다. 칭찬 속어·과장은 0.05 이하, 협박은 0.17 이상이었다. */
+export const AFFINITY_THREAT_MIN = 0.1;
+/** 협박으로 본 메시지의 적대 점수 최솟값. */
+export const AFFINITY_THREAT_NEG = 0.7;
 /** 호의 점수가 이 값 이상으로 올랐을 때만 AFFINITY_GAIN_COOLDOWN_MS 간격을 새로 시작한다. */
 export const AFFINITY_GAIN_MIN = 0.5;
 export const DM_SETTLE_MS = 1_500;

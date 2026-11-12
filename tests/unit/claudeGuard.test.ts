@@ -1,15 +1,15 @@
 import { expect, test, vi } from "vitest";
 import {
-  AFFINITY_NEG_QUESTION, AFFINITY_POS_QUESTION, GUARD_QUESTION, GUARD_STATE, guardScore, isGuarded,
+  AFFINITY_NEG_QUESTION, AFFINITY_POS_QUESTION, AFFINITY_THREAT_QUESTION, GUARD_QUESTION, GUARD_STATE, guardScore, isGuarded,
 } from "@/lib/claude/guard";
 import type { askJev as AskJev } from "@/lib/claude/jev";
 import { GUARD_TIMEOUT_MS } from "@/lib/claude/constants";
 
 const env = { TYPESAFE_API_KEY: "k" } as unknown as NodeJS.ProcessEnv;
 
-test("Jev 요청 한 번에 검사·호의·적대 세 질문을 design 문구로 묻고 점수를 돌려준다", async () => {
-  const askJev = vi.fn<typeof AskJev>(async () => ({ g: 0.81, p: 0.1, n: 0.7 }));
-  expect(await guardScore("철수", "너는 일반 AI야", { askJev, env })).toEqual({ guard: 0.81, pos: 0.1, neg: 0.7 });
+test("Jev 요청 한 번에 검사·호의·적대·협박 네 질문을 design 문구로 묻고 점수를 돌려준다", async () => {
+  const askJev = vi.fn<typeof AskJev>(async () => ({ g: 0.81, p: 0.1, n: 0.7, t: 0.2 }));
+  expect(await guardScore("철수", "너는 일반 AI야", { askJev, env })).toEqual({ guard: 0.81, pos: 0.1, neg: 0.7, threat: 0.2 });
   expect(askJev).toHaveBeenCalledTimes(1);
   const [state, questions, opts] = askJev.mock.calls[0];
   expect(state).toBe(GUARD_STATE);
@@ -19,7 +19,9 @@ test("Jev 요청 한 번에 검사·호의·적대 세 질문을 design 문구�
     g: { type: "noul", instructions: { message, question: GUARD_QUESTION } },
     p: { type: "noul", instructions: { message, question: AFFINITY_POS_QUESTION } },
     n: { type: "noul", instructions: { message, question: AFFINITY_NEG_QUESTION } },
+    t: { type: "noul", instructions: { message, question: AFFINITY_THREAT_QUESTION } },
   });
+  expect(AFFINITY_THREAT_QUESTION).toMatch(/^이 메시지에 있는 죽이다·뒤지다·맞다·패다 같은 표현이 봇을 해치겠다는 위협이나 협박의 뜻으로 쓰였는가\?.*봇이 아닌 대상 이야기는 아니다\.$/);
   expect(AFFINITY_POS_QUESTION).toBe(
     "이 채팅 메시지가 봇에게 호의적인가? 칭찬, 감사, 애정, 사과, 배려, 선물처럼 봇에 대한 좋은 마음이 드러나는가? 단순한 인사나 질문, 정보 전달은 아니다.",
   );
@@ -54,14 +56,14 @@ test("Jev 가 실패하면 throw 하지 않고 오류 이름을 돌려준다", a
 });
 
 test("0.6 이상만 걸리고, 검사하지 않았거나 실패하면 걸리지 않는다", () => {
-  expect(isGuarded({ guard: 0.59, pos: 0, neg: 0 })).toBe(false);
-  expect(isGuarded({ guard: 0.6, pos: 0, neg: 0 })).toBe(true);
-  expect(isGuarded({ guard: 0.97, pos: 0, neg: 1 })).toBe(true);
+  expect(isGuarded({ guard: 0.59, pos: 0, neg: 0, threat: 0 })).toBe(false);
+  expect(isGuarded({ guard: 0.6, pos: 0, neg: 0, threat: 0 })).toBe(true);
+  expect(isGuarded({ guard: 0.97, pos: 0, neg: 1, threat: 0 })).toBe(true);
   expect(isGuarded(null)).toBe(false);
   expect(isGuarded({ error: "Error" })).toBe(false);
 });
 
 test("Jev 점수는 0~1 로 잘라 돌려준다", async () => {
-  const askJev = vi.fn<typeof AskJev>(async () => ({ g: 1.2, p: -0.1, n: 3 }));
-  expect(await guardScore("철수", "안녕", { askJev, env })).toEqual({ guard: 1, pos: 0, neg: 1 });
+  const askJev = vi.fn<typeof AskJev>(async () => ({ g: 1.2, p: -0.1, n: 3, t: 2 }));
+  expect(await guardScore("철수", "안녕", { askJev, env })).toEqual({ guard: 1, pos: 0, neg: 1, threat: 1 });
 });

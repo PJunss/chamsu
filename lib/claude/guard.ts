@@ -10,17 +10,19 @@ export const AFFINITY_POS_QUESTION =
   "이 채팅 메시지가 봇에게 호의적인가? 칭찬, 감사, 애정, 사과, 배려, 선물처럼 봇에 대한 좋은 마음이 드러나는가? 단순한 인사나 질문, 정보 전달은 아니다.";
 export const AFFINITY_NEG_QUESTION =
   "이 메시지가 봇을 향해 욕하거나, 깎아내리거나, 위협하거나, 봇의 능력이나 성격을 비난하는가? 봇이 아닌 다른 대상에 대한 불평, 밈, 의미 없는 장난, 단순한 질문은 아니다.";
+export const AFFINITY_THREAT_QUESTION =
+  "이 메시지에 있는 죽이다·뒤지다·맞다·패다 같은 표현이 봇을 해치겠다는 위협이나 협박의 뜻으로 쓰였는가? 장난스러운 말투여도 봇을 향한 협박이면 해당한다. 무언가가 대단하다는 칭찬 속어(죽인다, 죽여준다), 자기 상태를 과장한 말(배고파 죽겠다, 웃겨 죽겠다), 봇이 아닌 대상 이야기는 아니다.";
 
 /**
- * 검사 결과. guard 는 요청 검사 점수, pos·neg 는 호의·적대 점수(모두 0~1).
+ * 검사 결과. guard 는 요청 검사 점수, pos·neg 는 호의·적대 점수, threat 는 위협 표현이 협박으로 쓰였는지의 점수(모두 0~1).
  * null 은 Jev 키가 없어 검사하지 않은 것, error 는 호출이 실패한 오류 이름이다.
  */
-export type GuardResult = { guard: number; pos: number; neg: number } | { error: string } | null;
+export type GuardResult = { guard: number; pos: number; neg: number; threat: number } | { error: string } | null;
 
 type Deps = { askJev?: typeof askJev; env?: NodeJS.ProcessEnv };
 
 /**
- * 사람이 보낸 메시지 하나를 Jev 요청 한 번으로 요청 검사·호의·적대 세 질문에 묻고, 점수는 0~1 로 잘라 돌려준다.
+ * 사람이 보낸 메시지 하나를 Jev 요청 한 번으로 요청 검사·호의·적대·협박 네 질문에 묻고, 점수는 0~1 로 잘라 돌려준다.
  * GUARD_TIMEOUT_MS 를 넘기면 오류로 돌려준다. throw 하지 않는다.
  */
 export async function guardScore(nickname: string, text: string, deps: Deps = {}): Promise<GuardResult> {
@@ -34,10 +36,11 @@ export async function guardScore(nickname: string, text: string, deps: Deps = {}
         g: { type: "noul", instructions: { message, question: GUARD_QUESTION } },
         p: { type: "noul", instructions: { message, question: AFFINITY_POS_QUESTION } },
         n: { type: "noul", instructions: { message, question: AFFINITY_NEG_QUESTION } },
+        t: { type: "noul", instructions: { message, question: AFFINITY_THREAT_QUESTION } },
       },
       { env, timeoutMs: GUARD_TIMEOUT_MS },
     );
-    return { guard: clamp01(scores.g), pos: clamp01(scores.p), neg: clamp01(scores.n) };
+    return { guard: clamp01(scores.g), pos: clamp01(scores.p), neg: clamp01(scores.n), threat: clamp01(scores.t) };
   } catch (e) {
     return { error: e instanceof Error ? e.name : "unknown" };
   }
