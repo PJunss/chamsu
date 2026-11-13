@@ -9,11 +9,11 @@ import { MyEventForm } from "@/components/calendar/MyEventForm";
 import { UpcomingList } from "@/components/calendar/UpcomingList";
 import { MonthGridDesktop } from "@/components/calendar/desktop/MonthGridDesktop";
 import { MonthGridMobile } from "@/components/calendar/mobile/MonthGridMobile";
-import { useMonthEvents } from "@/components/calendar/useEvents";
+import { useMonthEvents, useRecentOfficial } from "@/components/calendar/useEvents";
 import { useFilters } from "@/components/calendar/useFilters";
-import { useMyMonthEvents } from "@/components/calendar/useMyEvents";
+import { useMyMonthEvents, useMyRecentEvents } from "@/components/calendar/useMyEvents";
 import { useNow } from "@/components/calendar/useNow";
-import { upcomingEvents, visibleEvents, type CalendarEvent } from "@/lib/calendar/events";
+import { upcomingVisible, visibleEvents, type CalendarEvent } from "@/lib/calendar/events";
 import { addMonths, kstParts, type Ymd } from "@/lib/calendar/kst";
 
 const UPCOMING_COUNT = 5;
@@ -45,7 +45,13 @@ function CalendarView({ now }: { now: Date }) {
   const mine = useMyMonthEvents(uid, year, month);
   const { on, toggle } = useFilters();
   const visible = useMemo(() => visibleEvents([...official.events, ...mine.events], on), [official.events, mine.events, on]);
-  const upcoming = useMemo(() => upcomingEvents(visible, now, UPCOMING_COUNT), [visible, now]);
+  /** "다가오는 일정"은 보고 있는 달과 상관없이 지금부터 고른다. */
+  const recentOfficial = useRecentOfficial(now);
+  const recentMine = useMyRecentEvents(uid, now);
+  const upcoming = useMemo(
+    () => upcomingVisible(recentOfficial.events, recentMine.events, on, now, UPCOMING_COUNT),
+    [recentOfficial.events, recentMine.events, on, now],
+  );
 
   const [detail, setDetail] = useState<CalendarEvent | null>(null);
   const [addFor, setAddFor] = useState<Ymd | null>(null);
@@ -75,7 +81,7 @@ function CalendarView({ now }: { now: Date }) {
         </div>
       </div>
       <aside className="px-4 pb-6 pt-7 md:w-[320px] md:shrink-0 md:overflow-y-auto md:border-l md:border-zinc-200 md:px-5 md:pt-7">
-        <UpcomingList events={upcoming} now={now} ready={official.ready && mine.ready} onOpen={setDetail} />
+        <UpcomingList events={upcoming} now={now} ready={recentOfficial.ready && recentMine.ready} onOpen={setDetail} />
       </aside>
 
       {detail && <EventDetail event={detail} now={now} uid={uid} onClose={closeDetail} />}

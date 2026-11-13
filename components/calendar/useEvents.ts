@@ -65,10 +65,15 @@ export function upcomingFromMs(now: Date | null): number | null {
   return now === null ? null : (Math.floor(now.getTime() / DAY_MS) - QUERY_BACK_DAYS) * DAY_MS;
 }
 
+/** 지금 − QUERY_BACK_DAYS 일 이후에 시작한 공식 일정 전부(끝난 것 포함). now 가 null 이면 ready 가 false 다. */
+export function useRecentOfficial(now: Date | null): { ready: boolean; events: CalendarEvent[] } {
+  return useEventDocs("events", upcomingFromMs(now), null, false);
+}
+
 /** 지금부터 n 개(끝나지 않은 공식 일정). 지금 시각을 알기 전에는 ready 가 false 다. */
 export function useUpcomingOfficial(n: number): { ready: boolean; events: CalendarEvent[] } {
   const now = useNow();
-  const { ready, events } = useEventDocs("events", upcomingFromMs(now), null, false);
+  const { ready, events } = useRecentOfficial(now);
   const upcoming = useMemo(() => (now === null ? EMPTY : upcomingEvents(events, now, n)), [events, now, n]);
   return { ready, events: upcoming };
 }

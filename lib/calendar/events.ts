@@ -100,6 +100,20 @@ export function visibleEvents(events: readonly CalendarEvent[], on: readonly Fil
   return events.filter((e) => on.includes(groupOf(e)));
 }
 
+/**
+ * "다가오는 일정": 공식 일정과 내 일정을 합쳐 켜진 묶음만 남기고, 끝나지 않은 것을 시작 순으로 n 개.
+ * 보고 있는 달과 상관없이 now 기준이다.
+ */
+export function upcomingVisible(
+  official: readonly CalendarEvent[],
+  mine: readonly CalendarEvent[],
+  on: readonly FilterGroup[],
+  now: Date,
+  n: number,
+): CalendarEvent[] {
+  return upcomingEvents(visibleEvents([...official, ...mine], on), now, n);
+}
+
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const two = (n: number) => String(n).padStart(2, "0");
 

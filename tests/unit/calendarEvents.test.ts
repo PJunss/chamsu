@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  FILTER_GROUPS, QUERY_BACK_DAYS, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, visibleEvents, whenText,
+  FILTER_GROUPS, QUERY_BACK_DAYS, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, upcomingVisible, visibleEvents, whenText,
   type CalendarEvent,
 } from "@/lib/calendar/events";
 import { kstDate } from "@/lib/calendar/kst";
@@ -97,4 +97,34 @@ test("ddayText: 오늘, D-n, 진행 중, 지났으면 빈 문자열", () => {
   expect(ddayText(ev({ startAt: kstDate(2026, 11, 19, 6) }), now)).toBe("D-6");
   expect(ddayText(ev({ startAt: kstDate(2026, 11, 12, 12), endAt: kstDate(2026, 11, 19, 12) }), now)).toBe("진행 중");
   expect(ddayText(ev({ startAt: kstDate(2026, 11, 10, 12) }), now)).toBe("");
+});
+
+describe("upcomingVisible", () => {
+  const patch = ev({ id: "patch", kind: "patch", startAt: kstDate(2026, 11, 26, 12) });
+  const season = ev({ id: "season", kind: "season", startAt: kstDate(2026, 11, 12, 12), endAt: kstDate(2026, 11, 19, 12) });
+  const nextMonth = ev({ id: "next", kind: "tournament", startAt: kstDate(2026, 12, 5, 19) });
+  const done = ev({ id: "done", kind: "maintenance", startAt: kstDate(2026, 11, 10, 6), endAt: kstDate(2026, 11, 10, 12) });
+  const duo = ev({ id: "duo", kind: null, mine: true, source: null, startAt: kstDate(2026, 11, 14, 21) });
+  const myDone = ev({ id: "myDone", kind: null, mine: true, source: null, startAt: kstDate(2026, 11, 12, 21) });
+  const official = [patch, nextMonth, done, season];
+  const mine = [myDone, duo];
+  const ALL = ["maint", "season", "match", "mine"] as const;
+
+  test("공식 일정과 내 일정이 시작 순으로 섞이고, 다음 달 일정도 들어간다", () => {
+    expect(upcomingVisible(official, mine, ALL, now, 5).map((e) => e.id)).toEqual(["season", "duo", "patch", "next"]);
+  });
+  test("꺼진 묶음은 빠진다", () => {
+    expect(upcomingVisible(official, mine, ["maint", "match"], now, 5).map((e) => e.id)).toEqual(["patch", "next"]);
+    expect(upcomingVisible(official, mine, ["mine"], now, 5).map((e) => e.id)).toEqual(["duo"]);
+    expect(upcomingVisible(official, mine, [], now, 5)).toEqual([]);
+  });
+  test("끝난 일정은 빠진다", () => {
+    const ids = upcomingVisible(official, mine, ALL, now, 10).map((e) => e.id);
+    expect(ids).not.toContain("done");
+    expect(ids).not.toContain("myDone");
+  });
+  test("n 개에서 자른다. 꺼진 묶음을 뺀 뒤에 센다", () => {
+    expect(upcomingVisible(official, mine, ALL, now, 2).map((e) => e.id)).toEqual(["season", "duo"]);
+    expect(upcomingVisible(official, mine, ["maint", "match", "mine"], now, 2).map((e) => e.id)).toEqual(["duo", "patch"]);
+  });
 });
