@@ -21,7 +21,7 @@ export async function askJev(
     headers: {
       Authorization: `Bearer ${env.TYPESAFE_API_KEY ?? ""}`,
       "Content-Type": "application/json",
-      "User-Agent": "chamsu-bot/1.0",
+      "User-Agent": "er-chatbot/1.0",
     },
     body: JSON.stringify({ model: "jev-latest", state, questions }),
     signal: AbortSignal.timeout(opts.timeoutMs ?? JEV_TIMEOUT_MS),

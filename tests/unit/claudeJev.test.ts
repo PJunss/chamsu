@@ -30,7 +30,7 @@ test("systemone 에 UA·키를 붙여 보내고 noul 점수를 돌려준다", as
   expect(init.headers).toEqual({
     Authorization: "Bearer key-test",
     "Content-Type": "application/json",
-    "User-Agent": "chamsu-bot/1.0",
+    "User-Agent": "er-chatbot/1.0",
   });
   expect(JSON.parse(init.body as string)).toEqual({ model: "jev-latest", state: "철수: 내 생일 알아?", questions });
   expect(init.signal).toBeInstanceOf(AbortSignal);

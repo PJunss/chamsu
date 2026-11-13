@@ -11,7 +11,7 @@ type Stage =
   | { name: "nickname"; pin: string }
   | { name: "chat"; uid: string; nickname: string };
 
-export function ChamsuApp() {
+export function ErChatbotApp() {
   const [stage, setStage] = useState<Stage>({ name: "pin" });
 
   const submitPin = useCallback(async (pin: string) => {

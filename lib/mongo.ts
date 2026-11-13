@@ -34,10 +34,10 @@ async function createIndexes(db: Db, prefix: string): Promise<void> {
 
 type Holder = { db?: Promise<Db>; indexed: Map<string, Promise<void>> };
 
-const g = globalThis as typeof globalThis & { __chamsuMongo?: Holder };
+const g = globalThis as typeof globalThis & { __erChatbotMongo?: Holder };
 /** 개발 모드는 모듈을 다시 읽어도 연결을 다시 쓰도록 globalThis 에 둔다. */
 const holder: Holder =
-  process.env.NODE_ENV === "development" ? (g.__chamsuMongo ??= { indexed: new Map() }) : { indexed: new Map() };
+  process.env.NODE_ENV === "development" ? (g.__erChatbotMongo ??= { indexed: new Map() }) : { indexed: new Map() };
 
 let testDb: Db | null = null;
 const testIndexed = new WeakMap<Db, Map<string, Promise<void>>>();

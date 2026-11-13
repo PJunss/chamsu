@@ -49,7 +49,7 @@ test("러너에 UA 와 토큰을 붙여 ask_agent 를 부른다", async () => {
   expect(init.headers).toEqual({
     Authorization: "Bearer tok-test",
     "Content-Type": "application/json",
-    "User-Agent": "chamsu-bot/1.0",
+    "User-Agent": "er-chatbot/1.0",
   });
   expect(JSON.parse(init.body as string)).toEqual({ script: "ask_agent", args: ["오늘 서울 날씨?\n\n짧게 사실만 답하라."] });
   expect(init.signal).toBeInstanceOf(AbortSignal);

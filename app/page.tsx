@@ -1,5 +1,5 @@
-import { ChamsuApp } from "@/components/ChamsuApp";
+import { ErChatbotApp } from "@/components/ErChatbotApp";
 
 export default function Page() {
-  return <ChamsuApp />;
+  return <ErChatbotApp />;
 }

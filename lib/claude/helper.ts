@@ -61,7 +61,7 @@ export async function askHelper(
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        "User-Agent": "chamsu-bot/1.0",
+        "User-Agent": "er-chatbot/1.0",
       },
       body: JSON.stringify({ script: "ask_agent", args: [`${question}\n\n짧게 사실만 답하라.`] }),
       signal: AbortSignal.timeout(opts.timeoutMs ?? HELPER_TIMEOUT_MS),

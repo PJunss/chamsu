@@ -4,7 +4,7 @@ import "./globals.css";
 
 const condensed = Roboto_Condensed({ weight: "700", subsets: ["latin"], variable: "--font-roboto-condensed" });
 
-export const metadata: Metadata = { title: "chamsu" };
+export const metadata: Metadata = { title: "이터널리턴 챗봇" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
