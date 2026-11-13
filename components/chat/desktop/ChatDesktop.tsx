@@ -28,6 +28,7 @@ export function ChatDesktop(p: ChatViewProps) {
         send={p.send}
         offline={p.offline}
         claudeFailed={p.claudeFailed}
+        quota={p.quota}
         placeholder={p.placeholder}
       />
     </div>

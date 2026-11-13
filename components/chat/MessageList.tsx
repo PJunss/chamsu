@@ -22,6 +22,8 @@ export type ChatViewProps = {
   titleAffinity: number | null;
   /** 호출에 실패한 페르소나 닉네임. 없으면 null */
   claudeFailed: string | null;
+  /** 입력창 위에 보일 내 10분 한도 한 줄. exhausted 는 다 써서 풀리기를 기다리는 중인지다. 보이지 않을 때는 null */
+  quota: { text: string; exhausted: boolean } | null;
   roomId: string;
   /** 방 페르소나의 닉네임과 아바타 */
   roomTitle: string;

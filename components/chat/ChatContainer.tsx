@@ -7,6 +7,7 @@ import { useMessages } from "@/components/chat/useMessages";
 import { useClaudeTyping } from "@/components/chat/useClaudeTyping";
 import { useAffinity } from "@/components/chat/useAffinity";
 import { useClearedAt } from "@/components/chat/useClearedAt";
+import { useQuota } from "@/components/chat/useQuota";
 import { shownAffinity } from "@/lib/claude/affinity";
 import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
@@ -51,6 +52,7 @@ export function ChatContainer({ uid, displayName, personaId }: { uid: string; di
   const typing = useClaudeTyping(room.jobsPath);
   const affinity = useAffinity(room.id, uid, cleared);
   const [claudeFailed, setClaudeFailed] = useState<string | null>(null);
+  const { text: quotaLine, exhausted: quotaExhausted, refresh: refreshQuota } = useQuota(room.id);
 
   const send = useCallback(
     async (text: string) => {
@@ -61,13 +63,15 @@ export function ChatContainer({ uid, displayName, personaId }: { uid: string; di
         setClaudeFailed(null);
         void callClaude(room.id, ref.id).then((ok) => {
           if (!ok) setClaudeFailed(persona.nickname);
+          /** 호출이 끝나면 성공·실패와 상관없이 한도를 다시 읽는다. */
+          refreshQuota();
         });
         return true;
       } catch {
         return false;
       }
     },
-    [uid, displayName, room.messagesPath, room.id, persona.nickname],
+    [uid, displayName, room.messagesPath, room.id, persona.nickname, refreshQuota],
   );
 
   const props: ChatViewProps = {
@@ -81,6 +85,7 @@ export function ChatContainer({ uid, displayName, personaId }: { uid: string; di
     affinity: affinity.ready ? affinity.scores : null,
     titleAffinity: affinity.ready ? shownAffinity(affinity.scores, persona.id) : null,
     claudeFailed,
+    quota: quotaLine === null ? null : { text: quotaLine, exhausted: quotaExhausted },
     roomId: room.id,
     roomTitle: persona.nickname,
     avatar: persona.avatar,

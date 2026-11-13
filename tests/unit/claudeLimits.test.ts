@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "vitest";
 import type { Db } from "mongodb";
 import { MONGO_TEST_ENV, startMongo } from "./helpers/mongo";
-import { consumeClaudeQuota } from "@/lib/claude/limits";
+import { consumeClaudeQuota, readClaudeQuota } from "@/lib/claude/limits";
 import { CLAUDE_LIMITS } from "@/lib/claude/constants";
 import { setMongoDbForTest } from "@/lib/mongo";
 
@@ -117,4 +117,65 @@ test("전체 하루 제한에 막힌 호출은 그 사람의 기록을 남기지
   expect(await consumeClaudeQuota("u3", NOW, limits, MONGO_TEST_ENV)).toBe("daily");
   expect(await col().findOne({ _id: "user_u3" })).toBeNull();
   expect(await col().findOne({ _id: "userday_u3_20261111" })).toBeNull();
+});
+
+test("readClaudeQuota: 아무것도 쓰지 않았으면 사용량 0 이고 풀리는 시각이 없다", async () => {
+  expect(await readClaudeQuota("u1", NOW, CLAUDE_LIMITS, MONGO_TEST_ENV)).toEqual({
+    window: { max: 10, used: 0, resetAt: null },
+    day: { max: 100, used: 0 },
+  });
+});
+
+test("readClaudeQuota: 쓴 횟수와 첫 호출 10분 뒤의 풀리는 시각을 준다", async () => {
+  for (let i = 0; i < 3; i++) await consumeClaudeQuota("u1", NOW + i * 1000, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  expect(await readClaudeQuota("u1", NOW + 5000, CLAUDE_LIMITS, MONGO_TEST_ENV)).toEqual({
+    window: { max: 10, used: 3, resetAt: NOW + 600_000 },
+    day: { max: 100, used: 3 },
+  });
+  expect(await readClaudeQuota("u1", NOW + 599_999, CLAUDE_LIMITS, MONGO_TEST_ENV)).toMatchObject({
+    window: { used: 3, resetAt: NOW + 600_000 },
+  });
+  expect(await readClaudeQuota("u2", NOW + 5000, CLAUDE_LIMITS, MONGO_TEST_ENV)).toEqual({
+    window: { max: 10, used: 0, resetAt: null },
+    day: { max: 100, used: 0 },
+  });
+});
+
+test("readClaudeQuota: 창이 끝나면 창 사용량은 0 이고 하루 사용량은 그대로다", async () => {
+  for (let i = 0; i < 3; i++) await consumeClaudeQuota("u1", NOW + i * 1000, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  expect(await readClaudeQuota("u1", NOW + 600_000, CLAUDE_LIMITS, MONGO_TEST_ENV)).toEqual({
+    window: { max: 10, used: 0, resetAt: null },
+    day: { max: 100, used: 3 },
+  });
+});
+
+test("readClaudeQuota: 한국 시간 06:00 을 넘기면 하루 사용량이 0 이다", async () => {
+  for (let i = 0; i < 3; i++) await consumeClaudeQuota("u1", NOW + i * 1000, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  const reset = Date.UTC(2026, 10, 11, 21, 0);
+  expect((await readClaudeQuota("u1", reset - 1, CLAUDE_LIMITS, MONGO_TEST_ENV)).day).toEqual({ max: 100, used: 3 });
+  expect((await readClaudeQuota("u1", reset, CLAUDE_LIMITS, MONGO_TEST_ENV)).day).toEqual({ max: 100, used: 0 });
+});
+
+test("readClaudeQuota: 읽기만 해서는 문서가 생기거나 바뀌지 않는다", async () => {
+  await readClaudeQuota("u1", NOW, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  expect(await ids()).toEqual([]);
+  await consumeClaudeQuota("u1", NOW, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  const before = await col().find().sort({ _id: 1 }).toArray();
+  await readClaudeQuota("u1", NOW + 1000, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  await readClaudeQuota("u1", NOW + 700_000, CLAUDE_LIMITS, MONGO_TEST_ENV);
+  expect(await col().find().sort({ _id: 1 }).toArray()).toEqual(before);
+});
+
+test("readClaudeQuota: 꺼진 제한은 null 이고 모두 꺼져 있으면 MongoDB 에 접근하지 않는다", async () => {
+  expect(await readClaudeQuota("u1", NOW, { ...OFF, userDailyMax: 5 }, MONGO_TEST_ENV)).toEqual({
+    window: null,
+    day: { max: 5, used: 0 },
+  });
+  expect(await readClaudeQuota("u1", NOW, { ...OFF, user: { windowMs: 60_000, max: 2 } }, MONGO_TEST_ENV)).toEqual({
+    window: { max: 2, used: 0, resetAt: null },
+    day: null,
+  });
+  setMongoDbForTest(null);
+  expect(await readClaudeQuota("u1", NOW, OFF, {} as NodeJS.ProcessEnv)).toEqual({ window: null, day: null });
+  expect(await readClaudeQuota("u1", NOW, { ...OFF, dailyMax: 5 }, {} as NodeJS.ProcessEnv)).toEqual({ window: null, day: null });
 });

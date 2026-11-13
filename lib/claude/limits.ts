@@ -79,3 +79,40 @@ export async function consumeClaudeQuota(
     return "ok";
   }, env);
 }
+
+export type QuotaStatus = {
+  /** 시간 창 제한. 꺼져 있으면 null. resetAt 은 창이 풀리는 시각(ms)이고 열린 창이 없으면 null 이다. */
+  window: { max: number; used: number; resetAt: number | null } | null;
+  /** 사람당 하루 제한. 꺼져 있으면 null. */
+  day: { max: number; used: number } | null;
+};
+
+/**
+ * 그 사람의 지금 사용량. 읽기만 하고 기록하지 않는다. 창이 이미 끝났으면 used 0, resetAt null 이다.
+ * 시간 창과 사람당 하루 제한이 모두 꺼져 있으면 MongoDB 에 접근하지 않는다.
+ */
+export async function readClaudeQuota(
+  uid: string,
+  nowMs: number,
+  limits: ClaudeLimits = CLAUDE_LIMITS,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<QuotaStatus> {
+  const { user: userLimit, userDailyMax } = limits;
+  if (!userLimit && userDailyMax === null) return { window: null, day: null };
+  const col = await mongoCollection<LimitDoc>("claudeLimits", env);
+
+  let window: QuotaStatus["window"] = null;
+  if (userLimit) {
+    const u = await col.findOne({ _id: `user_${uid}` });
+    const open = u !== null && typeof u.windowStart === "number" && u.windowStart + userLimit.windowMs > nowMs;
+    window = open
+      ? { max: userLimit.max, used: u.count, resetAt: (u.windowStart as number) + userLimit.windowMs }
+      : { max: userLimit.max, used: 0, resetAt: null };
+  }
+  let day: QuotaStatus["day"] = null;
+  if (userDailyMax !== null) {
+    const ud = await col.findOne({ _id: userDayDocId(uid, nowMs) });
+    day = { max: userDailyMax, used: ud?.count ?? 0 };
+  }
+  return { window, day };
+}

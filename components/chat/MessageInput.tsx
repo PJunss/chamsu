@@ -8,12 +8,15 @@ export function MessageInput({
   send,
   offline,
   claudeFailed,
+  quota,
   placeholder,
 }: {
   send: (text: string) => Promise<boolean>;
   offline: boolean;
   /** 호출에 실패한 페르소나 닉네임. 없으면 null */
   claudeFailed: string | null;
+  /** 내 10분 한도 한 줄. 보이지 않을 때는 null */
+  quota: { text: string; exhausted: boolean } | null;
   placeholder?: string;
 }) {
   const [text, setText] = useState("");
@@ -40,6 +43,7 @@ export function MessageInput({
           {claudeFailed && <p className="mb-1 text-xs text-red-500">{claudeFailed} 호출 실패</p>}
         </>
       )}
+      {quota && <p className={`mb-1 text-[11px] ${quota.exhausted ? "text-rose-500" : "text-zinc-400"}`}>{quota.text}</p>}
       <div className="flex gap-2">
         <textarea
           value={text}
