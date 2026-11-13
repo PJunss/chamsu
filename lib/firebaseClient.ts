@@ -1,5 +1,7 @@
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, inMemoryPersistence, setPersistence, signInWithCustomToken, type Auth, type User } from "firebase/auth";
+import {
+  GoogleAuthProvider, browserLocalPersistence, getAuth, setPersistence, signInWithRedirect, signOut, type Auth,
+} from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 
 function clientApp(): FirebaseApp {
@@ -17,9 +19,13 @@ function clientApp(): FirebaseApp {
 export const getClientAuth = (): Auth => getAuth(clientApp());
 export const getClientDb = (): Firestore => getFirestore(clientApp());
 
-export async function signInWithToken(token: string): Promise<User> {
+/** 구글 로그인 화면으로 넘어간다. 로그인 상태는 이 브라우저에 남는다. 돌아온 뒤의 결과는 AuthProvider 가 받는다. */
+export async function startGoogleLogin(): Promise<void> {
   const auth = getClientAuth();
-  await setPersistence(auth, inMemoryPersistence);
-  const cred = await signInWithCustomToken(auth, token);
-  return cred.user;
+  await setPersistence(auth, browserLocalPersistence);
+  await signInWithRedirect(auth, new GoogleAuthProvider());
+}
+
+export function logout(): Promise<void> {
+  return signOut(getClientAuth());
 }
