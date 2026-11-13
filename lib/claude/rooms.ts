@@ -31,7 +31,7 @@ export function resolveRoom(roomId: string, list: readonly PersonaInfo[] = PERSO
       ownerUid: null,
       messagesPath: "messages",
       jobsPath: "claudeJobs",
-      description: '친구 일곱 명이 쓰는 잡담방 "chamsu"',
+      description: '친구 일곱 명이 쓰는 잡담방 "er-chatbot"',
       judgeState: "친구 7명의 한국어 단체 채팅방 메시지를 하나씩 평가한다.",
     };
   }
