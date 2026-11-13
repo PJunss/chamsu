@@ -57,9 +57,13 @@ export function kindText(e: Pick<CalendarEvent, "kind" | "mine">): string {
 }
 
 const DAY_MS = 86_400_000;
-const QUERY_BACK_DAYS = 60;
+/**
+ * 일정을 읽을 때 startAt 을 거슬러 올라가는 날 수. 정규 시즌(약 91일)에 프리시즌과 여유를 더한 값이다.
+ * 이보다 긴 일정은 뒤쪽 달에서 보이지 않는다.
+ */
+export const QUERY_BACK_DAYS = 130;
 
-/** 한 달을 그리려고 읽을 startAt 범위. from = 그 달 1일 00:00 KST − 60일, to = 다음 달 1일 00:00 KST. */
+/** 한 달을 그리려고 읽을 startAt 범위. from = 그 달 1일 00:00 KST − QUERY_BACK_DAYS 일, to = 다음 달 1일 00:00 KST. */
 export function monthQueryRange(year: number, month: number): { from: Date; to: Date } {
   return { from: new Date(kstDate(year, month, 1).getTime() - QUERY_BACK_DAYS * DAY_MS), to: kstDate(year, month + 1, 1) };
 }

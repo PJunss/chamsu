@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  FILTER_GROUPS, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, visibleEvents, whenText,
+  FILTER_GROUPS, QUERY_BACK_DAYS, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, visibleEvents, whenText,
   type CalendarEvent,
 } from "@/lib/calendar/events";
 import { kstDate } from "@/lib/calendar/kst";
@@ -21,10 +21,19 @@ test("필터 묶음: 점검·패치, 시즌·이벤트, 대회·방송, 내 일�
   expect(groupOf(ev({ kind: null, mine: true }))).toBe("mine");
 });
 
-test("한 달 읽기 범위: 1일 − 60일 부터 다음 달 1일 전까지(KST)", () => {
+test("한 달 읽기 범위: 1일 − 130일 부터 다음 달 1일 전까지(KST)", () => {
+  expect(QUERY_BACK_DAYS).toBe(130);
   const r = monthQueryRange(2026, 11);
   expect(r.to).toEqual(kstDate(2026, 12, 1));
-  expect(r.from).toEqual(new Date(kstDate(2026, 11, 1).getTime() - 60 * 86_400_000));
+  expect(r.from).toEqual(new Date(kstDate(2026, 11, 1).getTime() - 130 * 86_400_000));
+});
+
+test("정규 시즌은 끝나는 달을 볼 때도 읽기 범위에 들고 그 달에 걸친다", () => {
+  const season = ev({ kind: "season", startAt: kstDate(2026, 11, 19, 12), endAt: kstDate(2027, 2, 18, 9) });
+  const { from, to } = monthQueryRange(2027, 2);
+  expect(from.getTime()).toBeLessThanOrEqual(season.startAt.getTime());
+  expect(season.startAt.getTime()).toBeLessThan(to.getTime());
+  expect(overlapsMonth(season, 2027, 2)).toBe(true);
 });
 
 describe("overlapsMonth", () => {

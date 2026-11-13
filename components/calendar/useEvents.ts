@@ -5,11 +5,9 @@ import { collection, onSnapshot, orderBy, query, where } from "firebase/firestor
 import { toEvent } from "@/components/calendar/toEvent";
 import { useNow } from "@/components/calendar/useNow";
 import { getClientDb } from "@/lib/firebaseClient";
-import { monthQueryRange, overlapsMonth, upcomingEvents, type CalendarEvent } from "@/lib/calendar/events";
+import { QUERY_BACK_DAYS, monthQueryRange, overlapsMonth, upcomingEvents, type CalendarEvent } from "@/lib/calendar/events";
 
 const DAY_MS = 86_400_000;
-/** 다가오는 일정을 고를 때 이미 시작한 일정(진행 중인 시즌 등)을 잡으려고 거슬러 읽는 날 수. */
-const UPCOMING_BACK_DAYS = 100;
 const EMPTY: CalendarEvent[] = [];
 
 /**
@@ -59,12 +57,18 @@ export function useMonthEvents(year: number, month: number): { ready: boolean; e
   return { ready, events: inMonth };
 }
 
+/**
+ * 끝나지 않은 일정을 찾으려고 읽을 startAt 의 시작(ms). 이미 시작한 일정(진행 중인 시즌 등)을 잡으려고 QUERY_BACK_DAYS 일을 거슬러 간다.
+ * 날 단위로 내려, 분이 바뀔 때마다 다시 구독하지 않게 한다. 지금 시각을 모르면 null.
+ */
+export function upcomingFromMs(now: Date | null): number | null {
+  return now === null ? null : (Math.floor(now.getTime() / DAY_MS) - QUERY_BACK_DAYS) * DAY_MS;
+}
+
 /** 지금부터 n 개(끝나지 않은 공식 일정). 지금 시각을 알기 전에는 ready 가 false 다. */
 export function useUpcomingOfficial(n: number): { ready: boolean; events: CalendarEvent[] } {
   const now = useNow();
-  /** 읽는 범위의 시작은 날 단위로 내려, 분이 바뀔 때마다 다시 구독하지 않게 한다. */
-  const fromMs = now === null ? null : (Math.floor(now.getTime() / DAY_MS) - UPCOMING_BACK_DAYS) * DAY_MS;
-  const { ready, events } = useEventDocs("events", fromMs, null, false);
+  const { ready, events } = useEventDocs("events", upcomingFromMs(now), null, false);
   const upcoming = useMemo(() => (now === null ? EMPTY : upcomingEvents(events, now, n)), [events, now, n]);
   return { ready, events: upcoming };
 }
