@@ -47,7 +47,9 @@ service cloud.firestore {
           && (d.endAt == null || (d.endAt is timestamp && d.endAt > d.startAt))
           && d.allDay is bool
           && (d.remindMinutes == null || d.remindMinutes in [10, 30, 60])
-          && (d.remindMinutes == null ? d.remindAt == null : d.remindAt is timestamp)
+          && (d.remindMinutes == null
+            ? d.remindAt == null
+            : (d.remindAt is timestamp && d.remindAt == d.startAt - duration.value(d.remindMinutes, 'm')))
           && d.notifiedAt == null
           && d.via == 'app';
       }

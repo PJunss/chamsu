@@ -228,12 +228,30 @@ describe("users/{uid}/events", () => {
     await assertFails(addDoc(collection(user(), MINE), myEvent({ endAt: Timestamp.fromMillis(START.toMillis() - 1) })));
     await assertFails(addDoc(collection(user(), MINE), myEvent({ endAt: START })));
   });
+  const before = (minutes: number) => Timestamp.fromMillis(START.toMillis() - minutes * 60_000);
   test("remindMinutes 는 10·30·60 만, 값이 있으면 remindAt 도 있어야 한다", async () => {
-    const at = Timestamp.fromMillis(START.toMillis() - 900_000);
-    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 15, remindAt: at })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 15, remindAt: before(15) })));
     await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: null })));
-    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: null, remindAt: at })));
-    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 10, remindAt: at })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: null, remindAt: before(10) })));
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 10, remindAt: before(10) })));
+  });
+  test("remindAt 은 startAt 에서 정확히 remindMinutes 분 앞이어야 한다", async () => {
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: before(30) })));
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 60, remindAt: before(60) })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: before(29) })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: START })));
+    await assertFails(
+      addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: Timestamp.fromMillis(START.toMillis() - 1_800_001) })),
+    );
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: before(10) })));
+  });
+  test("미리 알림이 있는 일정의 시작만 고치면 거부, remindAt 을 같이 맞추면 허용", async () => {
+    await seed(`${MINE}/e1`, myEvent({ remindMinutes: 30, remindAt: before(30) }));
+    const later = Timestamp.fromMillis(START.toMillis() + 3_600_000);
+    await assertFails(updateDoc(doc(user(), `${MINE}/e1`), { startAt: later }));
+    await assertSucceeds(
+      updateDoc(doc(user(), `${MINE}/e1`), { startAt: later, remindAt: Timestamp.fromMillis(later.toMillis() - 1_800_000) }),
+    );
   });
   test("notifiedAt 에 값을 넣으면 거부", async () => {
     await assertFails(addDoc(collection(user(), MINE), myEvent({ notifiedAt: Timestamp.now() })));

@@ -38,6 +38,11 @@ describe("parseMyEvent", () => {
   });
 });
 
+test("remindAtOf: 밀리초가 붙은 시작에서도 정확히 분 단위만큼만 앞선다", () => {
+  const start = new Date(START.getTime() + 123);
+  for (const m of [10, 30, 60]) expect(start.getTime() - remindAtOf(start, m)!.getTime()).toBe(m * 60_000);
+});
+
 test("remindAtOf: 시작에서 미리 알림 분만큼 앞, 없으면 null", () => {
   expect(remindAtOf(START, 30)).toEqual(kstDate(2026, 11, 19, 20, 30));
   expect(remindAtOf(START, null)).toBeNull();
