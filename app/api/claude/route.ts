@@ -9,12 +9,12 @@ import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
-import { PERSONAS, isBotUid } from "@/lib/claude/personas/info";
+import { isBotUid } from "@/lib/claude/personas/info";
 import { affinityScores } from "@/lib/claude/affinityNeg";
 import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
 import { decideOutcome, type BotResult } from "@/lib/claude/outcome";
-import { MAIN_ROOM_ID, pickTargets, resolveRoom, type Room } from "@/lib/claude/rooms";
+import { pickTarget, resolveRoom, type Room } from "@/lib/claude/rooms";
 import { isClearCommand } from "@/lib/claude/clear";
 import { clearRoom } from "@/lib/claude/clearRoom";
 import { readClearedAt } from "@/lib/claude/roomState";
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
   } catch {
     return fail("bad_request", 400);
   }
-  const { roomId = MAIN_ROOM_ID, messageId } = body ?? {};
+  const { roomId, messageId } = body ?? {};
   if (typeof messageId !== "string" || !messageId) return fail("bad_request", 400);
   if (typeof roomId !== "string") return fail("bad_request", 400);
   const room = resolveRoom(roomId);
@@ -129,17 +129,19 @@ export async function POST(req: Request) {
     if (!snap.exists) return fail("not_found", 404);
     const q = snap.data() as QuestionDoc;
     if (isBotUid(q.uid) && !internal) return fail("forbidden", 403);
-    const target = typeof q.text === "string" ? pickTargets(room, { ...q, text: q.text }, PERSONAS, { internal }) : null;
-    const personas = (target?.personas ?? []).map((p) => getPersonaConfig(p.id)).filter((p) => p !== null);
+    const target = typeof q.text === "string" ? pickTarget(room, { uid: q.uid, text: q.text }) : null;
+    const personas = target ? [getPersonaConfig(target.persona.id)].filter((p) => p !== null) : [];
     if (!target || personas.length === 0) return fail("bad_request", 400);
     const now = Date.now();
     if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);
-    const { question, chainDepth, chainRootUid } = target;
+    const { question } = target;
+    const chainDepth = 1;
+    const chainRootUid = q.uid;
 
     if (isClearCommand(room, q)) return await clearAndGreet(db, room, personas[0], q, id);
 
-    /** /clear 는 1:1 방에만 있어 단체방은 방 문서를 읽지 않는다. 대화 기록·기억·호감도는 이 시각 이후만 본다. */
-    const clearedAt = room.kind === "dm" ? await readClearedAt(db, room.id) : null;
+    /** 대화 기록·기억·호감도는 방을 지운 시각 이후만 본다. */
+    const clearedAt = await readClearedAt(db, room.id);
     const clearedAtMs = clearedAt ? clearedAt.toMillis() : null;
     /** 호감도 시각은 앱 서버 시계라 Firestore 서버 시각인 clearedAt 보다 뒤처질 수 있다. 지운 뒤 저장한 값이 지운 이전으로 보이지 않게 맞춘다. */
     const affinityNow = clearedAtMs !== null ? Math.max(now, clearedAtMs + 1) : now;
@@ -160,7 +162,7 @@ export async function POST(req: Request) {
           return true;
         });
         if (!ok) return null;
-        timing.note("room", room.kind);
+        timing.note("room", room.id);
         timing.note("lag", now - q.createdAt.toMillis());
         timing.lap("accept");
         /** 작업 상태 갱신 실패는 답의 성공·실패를 바꾸지 않는다. 표시는 2분 뒤 사라진다. */
@@ -188,7 +190,7 @@ export async function POST(req: Request) {
     }
     if (jobs.length === 0) return fail("duplicate", 409);
 
-    if (room.ownerUid !== null) {
+    {
       try {
         await sleep(DM_SETTLE_MS);
         const newer = await messages.where("createdAt", ">", q.createdAt).orderBy("createdAt").limit(50).get();
@@ -339,9 +341,7 @@ export async function POST(req: Request) {
         }
       }
 
-      const next = answered
-        .filter((a) => pickTargets(room, { uid: a.uid, text: a.text, chainDepth, chainRootUid }, PERSONAS, { internal: true }))
-        .map((a) => a.id);
+      const next = answered.filter((a) => pickTarget(room, { uid: a.uid, text: a.text })).map((a) => a.id);
       if (next.length > 0) {
         const origin = chainOrigin(process.env, req.url);
         if (origin) {

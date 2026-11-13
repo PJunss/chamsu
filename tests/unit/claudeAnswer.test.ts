@@ -1,10 +1,10 @@
 import { expect, test, vi } from "vitest";
 import { answer, type ModelResponse } from "@/lib/claude/answer";
 import { getPersonaConfig } from "@/lib/claude/personas";
-import { resolveRoom } from "@/lib/claude/rooms";
+import { resolveRoom, roomIdFor } from "@/lib/claude/rooms";
 
 const persona = getPersonaConfig("bianca")!;
-const room = resolveRoom("main")!;
+const room = resolveRoom(roomIdFor("u1", "bianca"))!;
 const history = [{ id: "q", uid: "u1", nickname: "철수", text: "@비앙카 서울 날씨 어때?" }];
 const runner = { RUNNER_URL: "https://runner.example", RUNNER_TOKEN: "t" } as unknown as NodeJS.ProcessEnv;
 const noRunner = {} as NodeJS.ProcessEnv;

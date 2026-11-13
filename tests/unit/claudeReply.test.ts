@@ -4,7 +4,7 @@ import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
 
 const bianca = getPersonaConfig("bianca")!;
 const kuro: PersonaConfig = {
-  info: { id: "kuro", uid: "bot_kuro", nickname: "쿠로", trigger: "@쿠로", avatar: "/kuro.png" },
+  info: { id: "kuro", uid: "bot_kuro", nickname: "쿠로", avatar: "/kuro.png" },
   character: "x",
   replyText: { refused: "(냥)", userLimited: "(쉬는 냥)", dailyLimited: "(끝 냥)", failed: "(고장 냥)", empty: "(…냥)" },
   maxSentences: 1,

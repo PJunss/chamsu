@@ -15,22 +15,21 @@ import { clearRoom } from "@/lib/claude/clearRoom";
 import { markCleared, readClearedAt } from "@/lib/claude/roomState";
 import { rememberSince } from "@/lib/claude/memory";
 import type { askJev as AskJev } from "@/lib/claude/jev";
-import { dmRoomId, resolveRoom } from "@/lib/claude/rooms";
+import { resolveRoom, roomIdFor } from "@/lib/claude/rooms";
 
-const OWNER = "n_" + "0123456789abcdef".repeat(2);
-const OTHER = "n_" + "fedcba9876543210".repeat(2);
-const dm = resolveRoom(dmRoomId("bianca", OWNER))!;
-const otherDm = resolveRoom(dmRoomId("bianca", OTHER))!;
-const main = resolveRoom("main")!;
+const OWNER = "ownerUid0000000000000000001";
+const OTHER = "otherUid0000000000000000002";
+const dm = resolveRoom(roomIdFor(OWNER, "bianca"))!;
+const otherDm = resolveRoom(roomIdFor(OTHER, "bianca"))!;
 
-test("1:1 방 주인의 /clear 만 지우기 명령이다", () => {
+test("방 주인의 /clear 만 지우기 명령이다", () => {
   expect(isClearCommand(dm, { uid: OWNER, text: "/clear" })).toBe(true);
   expect(isClearCommand(dm, { uid: OWNER, text: "  /clear \n" })).toBe(true);
   expect(isClearCommand(dm, { uid: OWNER, text: "/clear 해줘" })).toBe(false);
   expect(isClearCommand(dm, { uid: OWNER, text: "/CLEAR" })).toBe(false);
   expect(isClearCommand(dm, { uid: OTHER, text: "/clear" })).toBe(false);
   expect(isClearCommand(dm, { uid: OWNER, text: 3 })).toBe(false);
-  expect(isClearCommand(main, { uid: OWNER, text: "/clear" })).toBe(false);
+  expect(isClearCommand(otherDm, { uid: OWNER, text: "/clear" })).toBe(false);
 });
 
 let fake: ReturnType<typeof createFakeFirestore>;

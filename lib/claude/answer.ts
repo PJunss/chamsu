@@ -3,7 +3,6 @@ import { DEFAULT_MODEL, MAX_MODEL_CALLS } from "@/lib/claude/constants";
 import { buildClaudeMessages, type CtxMessage, type Memory } from "@/lib/claude/context";
 import { HELPER_TOOL, askHelper, checkHelperQuestion, helperConfigured } from "@/lib/claude/helper";
 import type { PersonaConfig } from "@/lib/claude/personas";
-import { PERSONAS } from "@/lib/claude/personas/info";
 import { buildSystemPrompt } from "@/lib/claude/prompt";
 import { toReplyText } from "@/lib/claude/reply";
 import type { Room } from "@/lib/claude/rooms";
@@ -65,7 +64,7 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
     output_config: { effort: "low" },
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: buildSystemPrompt(room, persona, PERSONAS, { guarded, affinity, greeting }),
+    system: buildSystemPrompt(room, persona, { guarded, affinity, greeting }),
     ...(useTools ? { tools: [HELPER_TOOL] } : {}),
   };
 

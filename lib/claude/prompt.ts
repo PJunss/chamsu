@@ -1,7 +1,6 @@
 import { DEFAULT_MAX_LONG_SENTENCES, DEFAULT_MAX_SENTENCES } from "@/lib/claude/constants";
 import { affinityBand } from "@/lib/claude/affinity";
 import type { AffinityTones, PersonaConfig } from "@/lib/claude/personas";
-import { PERSONAS, type PersonaInfo } from "@/lib/claude/personas/info";
 import type { Room } from "@/lib/claude/rooms";
 
 /** 페르소나에 affinityTones 가 없을 때 쓰는 호감도 구간별 말투, 낮은 구간부터. */
@@ -15,7 +14,6 @@ export const DEFAULT_AFFINITY_TONES: AffinityTones = [
 
 /**
  * 시스템 프롬프트: 방 소개 → 페르소나 캐릭터 → 공통 규칙. 꺼진 기능의 규칙은 넣지 않는다.
- * 단체방에 자기 말고 다른 봇이 있으면 그 봇을 부르는 규칙을 더한다.
  * affinity 가 있으면 묻는 사람에 대한 호감도와 그 구간의 말투 줄을 규칙 끝에 둔다.
  * guarded 면 기억·도우미 규칙을 빼고, 마지막 메시지를 받아넘기라는 규칙을 맨 끝에 둔다.
  * greeting 이면 기억·도우미 규칙을 빼고, 대화가 지워진 방에서 처음 만난 것처럼 인사하라는 규칙을 맨 끝에 둔다.
@@ -23,7 +21,6 @@ export const DEFAULT_AFFINITY_TONES: AffinityTones = [
 export function buildSystemPrompt(
   room: Room,
   persona: PersonaConfig,
-  list: readonly PersonaInfo[] = PERSONAS,
   opts: { guarded?: boolean; affinity?: { nickname: string; score: number }; greeting?: { nickname: string } } = {},
 ): string {
   const name = persona.info.nickname;
@@ -39,16 +36,6 @@ export function buildSystemPrompt(
     "모르는 건 모른다고 한다. 지어내지 않는다.",
     "답은 캐릭터가 채팅에 보내는 대사만 쓴다. 상황 판단, 말투를 고른 이유, 상대를 대하는 태도 설명, 도구를 쓸지 말지 같은 생각이나 계획은 한 글자도 쓰지 않는다.",
   ];
-  if (room.kind === "group") {
-    const others = list.filter((p) => p.id !== persona.info.id && room.personaIds.includes(p.id)).map((p) => p.nickname);
-    if (others.length > 0) {
-      rules.push(
-        `이 방에는 다른 봇 ${others.join(", ")}도 있다. 그 봇에게 말을 걸고 싶을 때만 "@닉네임" 을 쓴다.`,
-        `대화 기록에 있는 ${others.join(", ")}의 말투, 말버릇, 감탄사, 호칭을 따라 하지 않는다. 위 캐릭터 설명의 말투만 쓴다.`,
-        "같은 메시지에서 다른 봇도 함께 불렸다면 그 봇은 지금 동시에 답하고 있어서 그 답이 너에게 보이지 않는다. 다른 봇이 답했는지, 답이 늦는지는 말하지 않는다.",
-      );
-    }
-  }
   const plain = !opts.guarded && !opts.greeting;
   if (persona.useMemory !== false && plain) {
     rules.push(

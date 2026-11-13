@@ -13,9 +13,9 @@ import { ConnectionBanner } from "@/components/chat/ConnectionBanner";
 import { ChatDesktop } from "@/components/chat/desktop/ChatDesktop";
 import { ChatMobile } from "@/components/chat/mobile/ChatMobile";
 import type { ChatViewProps } from "@/components/chat/MessageList";
-import { findMentions, findPersonaById } from "@/lib/claude/personas/info";
+import { findPersonaById } from "@/lib/claude/personas/info";
 import { buildRoomItems } from "@/lib/claude/roomList";
-import { MAIN_ROOM_ID, resolveRoom } from "@/lib/claude/rooms";
+import { resolveRoom } from "@/lib/claude/rooms";
 
 /** 서버가 방에 아무것도 쓰지 못한 경우(네트워크 오류·서버 오류). 429·502 는 서버가 안내를 쓰고, 409 는 다른 호출이 처리 중이다. */
 const CLAUDE_UNREPORTED = new Set([400, 404, 410, 500]);
@@ -35,13 +35,13 @@ function callClaude(roomId: string, messageId: string): Promise<boolean> {
 }
 
 export function ChatContainer({ uid, nickname }: { uid: string; nickname: string }) {
-  const [roomId, setRoomId] = useState(MAIN_ROOM_ID);
-  const [showList, setShowList] = useState(true);
   const rooms = useMemo(() => buildRoomItems(uid), [uid]);
+  const [roomId, setRoomId] = useState(rooms[0].roomId);
+  const [showList, setShowList] = useState(true);
   const room = resolveRoom(roomId)!;
-  const dmPersona = room.kind === "dm" ? findPersonaById(room.personaIds[0]) : null;
+  const dmPersona = findPersonaById(room.personaId);
 
-  const cleared = useClearedAt(room.kind === "dm" ? `rooms/${room.id}` : null);
+  const cleared = useClearedAt(`rooms/${room.id}`);
   const { messages, loadOlder, hasOlder, offline } = useMessages(room.messagesPath, cleared);
   const online = usePresence(uid, nickname);
   const typing = useClaudeTyping(room.jobsPath);
@@ -67,7 +67,7 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
           text, nickname, uid, createdAt: serverTimestamp(),
         });
         setClaudeFailed(null);
-        const callees = room.kind === "dm" ? (dmPersona ? [dmPersona] : []) : findMentions(text);
+        const callees = dmPersona ? [dmPersona] : [];
         if (callees.length > 0) {
           const sentRoom = room.id;
           void callClaude(sentRoom, ref.id).then((ok) => {
@@ -79,7 +79,7 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
         return false;
       }
     },
-    [uid, nickname, room.messagesPath, room.kind, room.id, dmPersona],
+    [uid, nickname, room.messagesPath, room.id, dmPersona],
   );
 
   const props: ChatViewProps = {
@@ -97,7 +97,7 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
     rooms,
     roomId,
     roomTitle: dmPersona ? dmPersona.nickname : "전체 채팅방",
-    isGroup: room.kind === "group",
+    isGroup: false,
     placeholder: dmPersona ? `${dmPersona.nickname}에게 말하기` : undefined,
     selectRoom,
     showList,

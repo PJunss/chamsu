@@ -44,9 +44,8 @@ export const AFFINITY_THREAT_MIN = 0.1;
 export const AFFINITY_THREAT_NEG = 0.7;
 /** 호의 점수가 이 값 이상으로 올랐을 때만 AFFINITY_GAIN_COOLDOWN_MS 간격을 새로 시작한다. */
 export const AFFINITY_GAIN_MIN = 0.5;
+/** 주인의 연속 메시지를 한 번에 답하려고 답하기 전에 기다리는 시간. */
 export const DM_SETTLE_MS = 1_500;
-/** 이 단계 이하의 봇 답만 다른 봇을 부른다. 사람 → A(1) → B(2) → A(3) → B(4) 에서 끝난다. */
-export const BOT_CHAIN_MAX = 3;
 
 /** 봇 사용량 제한. 값이 null 인 제한은 검사하지 않는다. 켤 때의 예: { user: { windowMs: 60_000, max: 5 }, dailyMax: 200 } */
 export type ClaudeLimits = { user: { windowMs: number; max: number } | null; dailyMax: number | null };
