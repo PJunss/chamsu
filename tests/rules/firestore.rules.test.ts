@@ -32,10 +32,12 @@ beforeAll(async () => {
 afterAll(async () => env.cleanup());
 beforeEach(async () => env.clearFirestore());
 
-const member = (uid = "alice", nickname = "철수") =>
-  env.authenticatedContext(uid, { member: true, nickname }).firestore();
-const outsider = () => env.authenticatedContext("eve").firestore();
+const user = (uid = "alice") => env.authenticatedContext(uid).firestore();
 const anon = () => env.unauthenticatedContext().firestore();
+
+const ROOM = "rooms/alice_bianca";
+const MESSAGES = `${ROOM}/messages`;
+const JOBS = `${ROOM}/claudeJobs`;
 
 const msg = (over: Record<string, unknown> = {}) => ({
   text: "안녕",
@@ -45,241 +47,176 @@ const msg = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-async function seedMessage() {
+/** 규칙을 끄고 문서를 미리 넣는다. */
+async function seed(path: string, data: Record<string, unknown>) {
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "messages/m1"), {
-      text: "x", nickname: "영희", uid: "bob", createdAt: Timestamp.now(),
-    });
+    await setDoc(doc(ctx.firestore(), path), data);
   });
 }
 
-describe("messages", () => {
-  test("member 는 읽는다", async () => {
-    await seedMessage();
-    await assertSucceeds(getDocs(collection(member(), "messages")));
+describe("rooms/{uid}_{personaId}/messages", () => {
+  beforeEach(async () => {
+    await seed(`${MESSAGES}/m1`, { text: "x", nickname: "비앙카", uid: "bot_bianca", createdAt: Timestamp.now() });
   });
-  test("member claim 없는 로그인 사용자는 못 읽는다", async () => {
-    await seedMessage();
-    await assertFails(getDocs(collection(outsider(), "messages")));
+
+  test("주인은 읽고 쓴다", async () => {
+    await assertSucceeds(getDocs(collection(user(), MESSAGES)));
+    await assertSucceeds(addDoc(collection(user(), MESSAGES), msg()));
   });
-  test("비로그인은 못 읽는다", async () => {
-    await seedMessage();
-    await assertFails(getDocs(collection(anon(), "messages")));
+  test("남은 읽지도 쓰지도 못한다", async () => {
+    await assertFails(getDocs(collection(user("bob"), MESSAGES)));
+    await assertFails(addDoc(collection(user("bob"), MESSAGES), msg({ uid: "bob" })));
   });
-  test("member 는 자기 닉네임으로 쓴다", async () =>
-    assertSucceeds(addDoc(collection(member(), "messages"), msg())));
-  test("닉네임 위조는 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "영희" }))));
-  test("남의 uid 는 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ uid: "bob" }))));
-  test("500자 초과는 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ text: "a".repeat(501) }))));
-  test("500자는 허용", async () =>
-    assertSucceeds(addDoc(collection(member(), "messages"), msg({ text: "a".repeat(500) }))));
-  test("빈 본문은 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ text: "" }))));
-  test("서버 시각이 아니면 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ createdAt: Timestamp.fromMillis(0) }))));
-  test("추가 필드는 거부", async () =>
-    assertFails(addDoc(collection(member(), "messages"), msg({ extra: 1 }))));
-  test("outsider 는 못 쓴다", async () =>
-    assertFails(addDoc(collection(outsider(), "messages"), msg())));
-  test("수정·삭제는 거부", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "messages/mine"), {
-        text: "x", nickname: "철수", uid: "alice", createdAt: Timestamp.now(),
-      });
-    });
-    await assertFails(updateDoc(doc(member(), "messages/mine"), { text: "y" }));
-    await assertFails(deleteDoc(doc(member(), "messages/mine")));
+  test("비로그인은 읽지도 쓰지도 못한다", async () => {
+    await assertFails(getDocs(collection(anon(), MESSAGES)));
+    await assertFails(addDoc(collection(anon(), MESSAGES), msg()));
+  });
+  test("남의 uid 로 쓰면 거부", async () =>
+    assertFails(addDoc(collection(user(), MESSAGES), msg({ uid: "bob" }))));
+  test("닉네임은 1~20자", async () => {
+    await assertSucceeds(addDoc(collection(user(), MESSAGES), msg({ nickname: "가".repeat(20) })));
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ nickname: "가".repeat(21) })));
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ nickname: "" })));
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ nickname: 3 })));
+  });
+  test("본문은 1~500자", async () => {
+    await assertSucceeds(addDoc(collection(user(), MESSAGES), msg({ text: "a".repeat(500) })));
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ text: "a".repeat(501) })));
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ text: "" })));
+  });
+  test("createdAt 이 서버 시각이 아니면 거부", async () =>
+    assertFails(addDoc(collection(user(), MESSAGES), msg({ createdAt: Timestamp.fromMillis(0) }))));
+  test("모르는 필드, 빠진 필드는 거부", async () => {
+    await assertFails(addDoc(collection(user(), MESSAGES), msg({ replyTo: "m1" })));
+    await assertFails(addDoc(collection(user(), MESSAGES), { text: "안녕", uid: "alice", createdAt: serverTimestamp() }));
+  });
+  test("고치기와 지우기는 주인도 못 한다", async () => {
+    await assertFails(updateDoc(doc(user(), `${MESSAGES}/m1`), { text: "y" }));
+    await assertFails(deleteDoc(doc(user(), `${MESSAGES}/m1`)));
   });
 });
 
-describe("presence", () => {
-  const p = (over: Record<string, unknown> = {}) => ({ nickname: "철수", lastSeen: serverTimestamp(), ...over });
-  test("본인 문서를 쓰고 갱신·삭제한다", async () => {
-    const db = member();
-    await assertSucceeds(setDoc(doc(db, "presence/alice"), p()));
-    await assertSucceeds(setDoc(doc(db, "presence/alice"), p()));
-    await assertSucceeds(deleteDoc(doc(db, "presence/alice")));
+describe("rooms/{uid}_{personaId}", () => {
+  beforeEach(async () => {
+    await seed(ROOM, { clearedAt: Timestamp.now() });
+    await seed("rooms/alicex_bianca", { clearedAt: Timestamp.now() });
   });
-  test("남의 문서는 거부", async () => assertFails(setDoc(doc(member(), "presence/bob"), p())));
-  test("남의 문서 삭제는 거부", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "presence/bob"), { nickname: "영희", lastSeen: Timestamp.now() });
-    });
-    await assertFails(deleteDoc(doc(member(), "presence/bob")));
+
+  test("주인은 읽는다", async () => assertSucceeds(getDoc(doc(user(), ROOM))));
+  test("남과 비로그인은 읽지 못한다", async () => {
+    await assertFails(getDoc(doc(user("bob"), ROOM)));
+    await assertFails(getDoc(doc(anon(), ROOM)));
   });
-  test("닉네임 위조는 거부", async () =>
-    assertFails(setDoc(doc(member(), "presence/alice"), p({ nickname: "영희" }))));
-  test("서버 시각이 아니면 거부", async () =>
-    assertFails(setDoc(doc(member(), "presence/alice"), p({ lastSeen: Timestamp.fromMillis(0) }))));
-  test("member 는 읽고 outsider 는 못 읽는다", async () => {
-    await assertSucceeds(getDocs(collection(member(), "presence")));
-    await assertFails(getDocs(collection(outsider(), "presence")));
+  test("주인도 쓰지 못한다", async () => {
+    await assertFails(setDoc(doc(user(), ROOM), { clearedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(doc(user(), ROOM)));
+  });
+  test("uid 뒤에 글자가 붙은 방 id 는 내 방이 아니다", async () => {
+    await assertFails(getDoc(doc(user(), "rooms/alicex_bianca")));
+    await assertFails(getDocs(collection(user(), "rooms/alicex_bianca/messages")));
+    await assertSucceeds(getDoc(doc(user("alicex"), "rooms/alicex_bianca")));
   });
 });
 
-describe("rateLimits", () => {
-  test("member 도 접근 불가", async () => {
-    await assertFails(getDoc(doc(member(), "rateLimits/1.2.3.4")));
-    await assertFails(setDoc(doc(member(), "rateLimits/1.2.3.4"), { count: 0, windowStart: 0 }));
+describe("rooms/{uid}_{personaId}/claudeJobs", () => {
+  beforeEach(async () => {
+    await seed(`${JOBS}/m1_bianca`, { status: "pending", personaId: "bianca", createdAt: Timestamp.now() });
+  });
+
+  test("주인은 읽는다", async () =>
+    assertSucceeds(getDocs(query(collection(user(), JOBS), where("status", "==", "pending")))));
+  test("남은 읽지 못한다", async () =>
+    assertFails(getDocs(query(collection(user("bob"), JOBS), where("status", "==", "pending")))));
+  test("주인도 쓰지 못한다", async () =>
+    assertFails(setDoc(doc(user(), `${JOBS}/m2_bianca`), { status: "pending" })));
+});
+
+describe("users", () => {
+  const profile = (over: Record<string, unknown> = {}) => ({ displayName: "철수", createdAt: serverTimestamp(), ...over });
+  const seedUser = (uid = "alice") => seed(`users/${uid}`, { displayName: "철수", createdAt: Timestamp.fromMillis(1_000) });
+
+  test("본인은 만들고 읽는다", async () => {
+    await assertSucceeds(setDoc(doc(user(), "users/alice"), profile()));
+    await assertSucceeds(getDoc(doc(user(), "users/alice")));
+  });
+  test("본인은 이름을 바꾼다", async () => {
+    await seedUser();
+    await assertSucceeds(updateDoc(doc(user(), "users/alice"), { displayName: "영희" }));
+  });
+  test("남은 읽지도 쓰지도 못한다", async () => {
+    await seedUser();
+    await assertFails(getDoc(doc(user("bob"), "users/alice")));
+    await assertFails(updateDoc(doc(user("bob"), "users/alice"), { displayName: "영희" }));
+    await assertFails(setDoc(doc(user("bob"), "users/carol"), profile()));
+    await assertFails(getDoc(doc(anon(), "users/alice")));
+  });
+  test("displayName 은 1~20자 문자열", async () => {
+    await assertSucceeds(setDoc(doc(user(), "users/alice"), profile({ displayName: "가".repeat(20) })));
+    await assertFails(setDoc(doc(user("bob"), "users/bob"), profile({ displayName: "가".repeat(21) })));
+    await assertFails(setDoc(doc(user("bob"), "users/bob"), profile({ displayName: "" })));
+    await assertFails(setDoc(doc(user("bob"), "users/bob"), profile({ displayName: 3 })));
+    await assertFails(updateDoc(doc(user(), "users/alice"), { displayName: "가".repeat(21) }));
+    await assertFails(updateDoc(doc(user(), "users/alice"), { displayName: "" }));
+  });
+  test("모르는 필드는 거부", async () => {
+    await assertFails(setDoc(doc(user(), "users/alice"), profile({ admin: true })));
+    await seedUser();
+    await assertFails(updateDoc(doc(user(), "users/alice"), { admin: true }));
+  });
+  test("만들 때 createdAt 은 서버 시각이어야 한다", async () =>
+    assertFails(setDoc(doc(user(), "users/alice"), profile({ createdAt: Timestamp.fromMillis(0) }))));
+  test("createdAt 은 바꾸지 못한다", async () => {
+    await seedUser();
+    await assertFails(updateDoc(doc(user(), "users/alice"), { createdAt: serverTimestamp() }));
+    await assertFails(updateDoc(doc(user(), "users/alice"), { displayName: "영희", createdAt: Timestamp.fromMillis(2_000) }));
+  });
+  test("지우지 못한다", async () => {
+    await seedUser();
+    await assertFails(deleteDoc(doc(user(), "users/alice")));
   });
 });
 
-describe("claudeJobs", () => {
-  test("member 는 읽고 outsider 는 못 읽는다", async () => {
-    await assertSucceeds(getDocs(collection(member(), "claudeJobs")));
-    await assertFails(getDocs(collection(outsider(), "claudeJobs")));
+describe("events", () => {
+  beforeEach(async () => {
+    await seed("events/e1", { title: "패치", kind: "patch", startAt: Timestamp.now() });
   });
-  test("member 는 pending 작업을 구독할 수 있다", async () =>
-    assertSucceeds(getDocs(query(collection(member(), "claudeJobs"), where("status", "==", "pending")))));
-  test("member 도 쓰지 못한다", async () =>
-    assertFails(setDoc(doc(member(), "claudeJobs/x"), { status: "pending" })));
-});
 
-describe("claudeLimits", () => {
-  test("접근 불가", async () => {
-    await assertFails(getDoc(doc(member(), "claudeLimits/day_20261111")));
-    await assertFails(setDoc(doc(member(), "claudeLimits/day_20261111"), { count: 0 }));
+  test("비로그인도 읽는다", async () => {
+    await assertSucceeds(getDoc(doc(anon(), "events/e1")));
+    await assertSucceeds(getDocs(collection(anon(), "events")));
   });
-});
-
-test("messages: 비앙카 이름·uid 로는 못 쓴다", async () => {
-  await assertFails(addDoc(collection(member(), "messages"), msg({ nickname: "비앙카" })));
-  await assertFails(addDoc(collection(member(), "messages"), msg({ uid: "bot_bianca" })));
-});
-
-describe("1:1 방", () => {
-  const ME = "n_" + "0123456789abcdef".repeat(2);
-  const YOU = "n_" + "fedcba9876543210".repeat(2);
-  const MY_ROOM = `rooms/dm_bianca_${ME}`;
-  const YOUR_ROOM = `rooms/dm_bianca_${YOU}`;
-  const me = () => member(ME, "현석");
-  const dmMsg = (over: Record<string, unknown> = {}) => msg({ nickname: "현석", uid: ME, ...over });
-
-  async function seed(path: string, data: Record<string, unknown>) {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), path), data);
-    });
-  }
-
-  test("주인은 자기 방 메시지를 읽고 만든다", async () => {
-    await seed(`${MY_ROOM}/messages/m1`, { text: "x", nickname: "비앙카", uid: "bot_bianca", createdAt: Timestamp.now() });
-    await assertSucceeds(getDocs(collection(me(), `${MY_ROOM}/messages`)));
-    await assertSucceeds(addDoc(collection(me(), `${MY_ROOM}/messages`), dmMsg()));
-  });
-  test("다른 페르소나 id 의 방도 주인이면 허용", async () =>
-    assertSucceeds(addDoc(collection(me(), `rooms/dm_nobody_${ME}/messages`), dmMsg())));
-  test("만들기 필드 검사는 단체방과 같다", async () => {
-    const c = collection(me(), `${MY_ROOM}/messages`);
-    await assertFails(addDoc(c, dmMsg({ nickname: "영희" })));
-    await assertFails(addDoc(c, dmMsg({ uid: YOU })));
-    await assertFails(addDoc(c, dmMsg({ text: "" })));
-    await assertFails(addDoc(c, dmMsg({ text: "a".repeat(501) })));
-    await assertFails(addDoc(c, dmMsg({ createdAt: Timestamp.fromMillis(0) })));
-    await assertFails(addDoc(c, dmMsg({ extra: 1 })));
-    await assertFails(addDoc(c, dmMsg({ replyTo: "x" })));
-  });
-  test("수정·삭제는 거부", async () => {
-    await seed(`${MY_ROOM}/messages/mine`, { text: "x", nickname: "현석", uid: ME, createdAt: Timestamp.now() });
-    await assertFails(updateDoc(doc(me(), `${MY_ROOM}/messages/mine`), { text: "y" }));
-    await assertFails(deleteDoc(doc(me(), `${MY_ROOM}/messages/mine`)));
-  });
-  test("남의 방은 읽기·만들기 거부", async () => {
-    await seed(`${YOUR_ROOM}/messages/m1`, { text: "x", nickname: "민수", uid: YOU, createdAt: Timestamp.now() });
-    await assertFails(getDocs(collection(me(), `${YOUR_ROOM}/messages`)));
-    await assertFails(getDoc(doc(me(), `${YOUR_ROOM}/messages/m1`)));
-    await assertFails(addDoc(collection(me(), `${YOUR_ROOM}/messages`), dmMsg()));
-    await assertFails(addDoc(collection(me(), `${YOUR_ROOM}/messages`), dmMsg({ uid: YOU })));
-  });
-  test("방 id 앞뒤에 다른 글자가 붙으면 거부", async () => {
-    await assertFails(getDocs(collection(me(), `rooms/dm_bianca_${ME}x/messages`)));
-    await assertFails(getDocs(collection(me(), `rooms/xdm_bianca_${ME}/messages`)));
-    await assertFails(getDocs(collection(me(), `rooms/dm__${ME}/messages`)));
-  });
-  test("member 가 아니면 자기 uid 방이어도 거부", async () => {
-    const out = env.authenticatedContext(ME).firestore();
-    await assertFails(getDocs(collection(out, `${MY_ROOM}/messages`)));
-    await assertFails(getDocs(collection(anon(), `${MY_ROOM}/messages`)));
-  });
-  test("claudeJobs 는 주인만 읽고 쓰기는 전부 거부", async () => {
-    await seed(`${MY_ROOM}/claudeJobs/j1`, { status: "pending", createdAt: Timestamp.now(), askedBy: ME, personaId: "bianca" });
-    await seed(`${YOUR_ROOM}/claudeJobs/j1`, { status: "pending", createdAt: Timestamp.now(), askedBy: YOU, personaId: "bianca" });
-    await assertSucceeds(getDocs(query(collection(me(), `${MY_ROOM}/claudeJobs`), where("status", "==", "pending"))));
-    await assertFails(getDocs(collection(me(), `${YOUR_ROOM}/claudeJobs`)));
-    await assertFails(setDoc(doc(me(), `${MY_ROOM}/claudeJobs/x`), { status: "pending" }));
-    await assertFails(updateDoc(doc(me(), `${MY_ROOM}/claudeJobs/j1`), { status: "done" }));
-  });
-  test("그 밖의 rooms 경로는 거부", async () => {
-    await assertFails(getDoc(doc(me(), MY_ROOM)));
-    await assertFails(setDoc(doc(me(), MY_ROOM), { x: 1 }));
-    await assertFails(getDocs(collection(me(), `${MY_ROOM}/other`)));
-    await assertFails(setDoc(doc(me(), `${MY_ROOM}/other/x`), { x: 1 }));
-    await assertFails(getDocs(collection(me(), "rooms/x/other")));
-  });
-});
-
-describe("memories·memoryState", () => {
-  test("읽기·쓰기 전부 거부", async () => {
-    await assertFails(getDocs(collection(member(), "memories")));
-    await assertFails(getDoc(doc(member(), "memories/main_m1")));
-    await assertFails(setDoc(doc(member(), "memories/main_m1"), { text: "x" }));
-    await assertFails(getDoc(doc(member(), "memoryState/main")));
-    await assertFails(setDoc(doc(member(), "memoryState/main"), { lastJudgedAt: Timestamp.now() }));
+  test("로그인 사용자도 쓰지 못한다", async () => {
+    await assertFails(setDoc(doc(user(), "events/e2"), { title: "x" }));
+    await assertFails(updateDoc(doc(user(), "events/e1"), { title: "y" }));
+    await assertFails(deleteDoc(doc(user(), "events/e1")));
   });
 });
 
 describe("affinity", () => {
-  const ME = "n_" + "0123456789abcdef".repeat(2);
-  const YOU = "n_" + "fedcba9876543210".repeat(2);
-  const MINE = `main_bianca_${ME}`;
-  const YOURS = `main_bianca_${YOU}`;
-  const me = () => member(ME, "현석");
-
   beforeEach(async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      const db = ctx.firestore();
-      await setDoc(doc(db, `affinity/${MINE}`), { roomId: "main", personaId: "bianca", uid: ME, score: 60, updatedAt: Timestamp.now() });
-      await setDoc(doc(db, `affinity/${YOURS}`), { roomId: "main", personaId: "bianca", uid: YOU, score: 40, updatedAt: Timestamp.now() });
-    });
+    await seed("affinity/alice_bianca_bianca_alice", { roomId: "alice_bianca", personaId: "bianca", uid: "alice", score: 60 });
+    await seed("affinity/bob_bianca_bianca_bob", { roomId: "bob_bianca", personaId: "bianca", uid: "bob", score: 40 });
   });
 
-  test("내 문서는 읽는다", async () => assertSucceeds(getDoc(doc(me(), `affinity/${MINE}`))));
-  test("남의 문서는 못 읽는다", async () => assertFails(getDoc(doc(me(), `affinity/${YOURS}`))));
-  test("비회원은 내 uid 문서도 못 읽는다", async () => assertFails(getDoc(doc(outsider(), `affinity/${MINE}`))));
-  test("내 uid 로 거른 쿼리는 허용, 거르지 않은 쿼리는 거부", async () => {
-    await assertSucceeds(getDocs(query(collection(me(), "affinity"), where("uid", "==", ME), where("roomId", "==", "main"))));
-    await assertFails(getDocs(collection(me(), "affinity")));
+  test("자기 uid 문서는 읽는다", async () => {
+    await assertSucceeds(getDoc(doc(user(), "affinity/alice_bianca_bianca_alice")));
+    await assertSucceeds(
+      getDocs(query(collection(user(), "affinity"), where("uid", "==", "alice"), where("roomId", "==", "alice_bianca"))),
+    );
   });
-  test("쓰기는 전부 거부", async () => {
-    await assertFails(setDoc(doc(me(), `affinity/${MINE}`), { roomId: "main", personaId: "bianca", uid: ME, score: 100 }));
-    await assertFails(updateDoc(doc(me(), `affinity/${MINE}`), { score: 100 }));
-    await assertFails(deleteDoc(doc(me(), `affinity/${MINE}`)));
-    await assertFails(setDoc(doc(me(), `affinity/main_lucia_${ME}`), { roomId: "main", personaId: "lucia", uid: ME, score: 100 }));
+  test("남의 문서는 읽지 못한다", async () => {
+    await assertFails(getDoc(doc(user(), "affinity/bob_bianca_bianca_bob")));
+    await assertFails(getDocs(query(collection(user(), "affinity"), where("uid", "==", "bob"))));
+    await assertFails(getDocs(collection(anon(), "affinity")));
   });
+  test("쓰지 못한다", async () =>
+    assertFails(setDoc(doc(user(), "affinity/alice_bianca_bianca_alice"), { uid: "alice", score: 100 })));
 });
 
-describe("rooms 방 문서", () => {
-  const ME = "n_" + "0123456789abcdef".repeat(2);
-  const YOU = "n_" + "fedcba9876543210".repeat(2);
-  const MY_ROOM = `rooms/dm_bianca_${ME}`;
-  const YOUR_ROOM = `rooms/dm_bianca_${YOU}`;
-  const me = () => member(ME, "현석");
-
-  beforeEach(async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), MY_ROOM), { clearedAt: Timestamp.now() });
-      await setDoc(doc(ctx.firestore(), YOUR_ROOM), { clearedAt: Timestamp.now() });
-    });
-  });
-
-  test("주인은 자기 방 문서를 읽는다", async () => assertSucceeds(getDoc(doc(me(), MY_ROOM))));
-  test("남의 방 문서는 못 읽는다", async () => assertFails(getDoc(doc(me(), YOUR_ROOM))));
-  test("비회원은 못 읽는다", async () => assertFails(getDoc(doc(outsider(), MY_ROOM))));
-  test("쓰기는 주인도 거부", async () => {
-    await assertFails(setDoc(doc(me(), MY_ROOM), { clearedAt: Timestamp.now() }));
-    await assertFails(updateDoc(doc(me(), MY_ROOM), { clearedAt: null }));
-    await assertFails(deleteDoc(doc(me(), MY_ROOM)));
+describe("그 밖의 경로", () => {
+  test("최상위 messages·presence 는 읽지도 쓰지도 못한다", async () => {
+    await assertFails(getDocs(collection(user(), "messages")));
+    await assertFails(addDoc(collection(user(), "messages"), msg()));
+    await assertFails(getDocs(collection(user(), "presence")));
   });
 });
