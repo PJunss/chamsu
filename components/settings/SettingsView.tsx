@@ -20,7 +20,7 @@ const errName = (e: unknown) => (e instanceof Error ? e.name : "unknown");
 function SignedInSettings({ uid, email, googleName }: { uid: string; email: string | null; googleName: string | null }) {
   const nameState = useDisplayName(uid);
   const loading = nameState.status === "loading";
-  /** 유저 문서가 없으면 구글 표시 이름을 보이고, 저장을 누르면 그 이름으로 문서를 만든다. */
+  /** 유저 문서를 읽지 못하면 구글 표시 이름을 보인다. */
   const shown = shownDisplayName(nameState, googleName);
   /** 입력 중인 이름. null 이면 저장된 이름을 그대로 보인다. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -73,7 +73,7 @@ function SignedInSettings({ uid, email, googleName }: { uid: string; email: stri
 
       <section className="mt-7">
         <h2 className="text-xs font-bold text-zinc-500">
-          <label htmlFor="display-name">이름</label>
+          <label htmlFor="display-name">닉네임</label>
         </h2>
         <div className="mt-3 flex gap-2">
           <input

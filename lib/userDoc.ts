@@ -7,14 +7,7 @@ import { cleanDisplayName, type DisplayNameState } from "@/lib/displayName";
 
 const userRef = (uid: string) => doc(getClientDb(), "users", uid);
 
-/** users/{uid} 가 없으면 구글 표시 이름으로 만든다. 있으면 건드리지 않는다. */
-export async function ensureUserDoc(uid: string, googleName: string | null): Promise<void> {
-  const ref = userRef(uid);
-  if ((await getDoc(ref)).exists()) return;
-  await setDoc(ref, { displayName: cleanDisplayName(googleName), createdAt: serverTimestamp() });
-}
-
-/** 이름을 저장한다. 문서가 있으면 displayName 만 고치고, 없으면 그 이름으로 만든다. */
+/** 닉네임을 저장한다. 문서가 있으면 displayName 만 고치고, 없으면(첫 로그인) 그 이름으로 만든다. */
 export async function saveDisplayName(uid: string, name: string): Promise<void> {
   const ref = userRef(uid);
   const displayName = cleanDisplayName(name);
@@ -23,9 +16,12 @@ export async function saveDisplayName(uid: string, name: string): Promise<void> 
 }
 
 const LOADING: DisplayNameState = { status: "loading" };
-const MISSING: DisplayNameState = { status: "missing" };
 
-/** users/{uid} 의 displayName 을 구독한다. 첫 스냅샷 전에는 loading, 문서가 없거나 읽지 못하면 missing 이다. */
+/**
+ * users/{uid} 의 displayName 을 구독한다. 첫 결과 전에는 loading 이다.
+ * 문서가 없다는 결과는 서버에서 온 것만 missing 으로 본다(캐시만 본 결과는 loading 으로 둔다).
+ * 읽지 못하면 error 다.
+ */
 export function useDisplayName(uid: string): DisplayNameState {
   const [shownUid, setShownUid] = useState(uid);
   const [state, setState] = useState<DisplayNameState>(LOADING);
@@ -38,13 +34,15 @@ export function useDisplayName(uid: string): DisplayNameState {
   useEffect(() => {
     return onSnapshot(
       userRef(uid),
+      { includeMetadataChanges: true },
       (snap) => {
         const v = snap.data()?.displayName;
-        setState(typeof v === "string" && v ? { status: "ready", name: v } : MISSING);
+        if (typeof v === "string" && v) setState({ status: "ready", name: v });
+        else setState(snap.metadata.fromCache ? LOADING : { status: "missing" });
       },
       (e) => {
         console.warn("user doc subscribe failed", e.code);
-        setState(MISSING);
+        setState({ status: "error" });
       },
     );
   }, [uid]);
