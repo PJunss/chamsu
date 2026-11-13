@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { getClientAuth } from "@/lib/firebaseClient";
 import { ensureUserDoc } from "@/lib/userDoc";
 
@@ -19,9 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
 
   useEffect(() => {
-    const auth = getClientAuth();
-    getRedirectResult(auth).catch((e: unknown) => console.warn("google login failed", errCode(e)));
-    return onAuthStateChanged(auth, (user) => {
+    return onAuthStateChanged(getClientAuth(), (user) => {
       if (!user) {
         setState({ status: "out" });
         return;

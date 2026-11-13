@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PERSONAS } from "@/lib/claude/personas/info";
-import { startGoogleLogin } from "@/lib/firebaseClient";
+import { isLoginCancelled, startGoogleLogin } from "@/lib/firebaseClient";
 
 /** 로그인이 필요한 화면의 로그인 전 모습. title 을 주면 휴대폰에서 화면 제목을 위에 보인다. */
 export function LoginPrompt({ title }: { title?: string }) {
@@ -15,8 +15,11 @@ export function LoginPrompt({ title }: { title?: string }) {
     try {
       await startGoogleLogin();
     } catch (e) {
-      console.warn("google login start failed", e instanceof Error ? e.name : "unknown");
-      setFailed(true);
+      if (!isLoginCancelled(e)) {
+        console.warn("google login failed", e instanceof Error ? e.name : "unknown");
+        setFailed(true);
+      }
+    } finally {
       setBusy(false);
     }
   }
@@ -53,7 +56,7 @@ export function LoginPrompt({ title }: { title?: string }) {
           </span>
           Google 계정으로 로그인
         </button>
-        {failed && <p className="mt-3 text-xs text-red-500">로그인을 시작하지 못했습니다. 다시 눌러 주세요.</p>}
+        {failed && <p className="mt-3 text-xs text-red-500">로그인하지 못했습니다. 다시 눌러 주세요.</p>}
         <p className="mt-6 text-xs text-zinc-400">캘린더는 로그인 없이 볼 수 있어요</p>
       </div>
     </div>
