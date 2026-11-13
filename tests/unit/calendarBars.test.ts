@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { isMultiDay, weekBars } from "@/lib/calendar/bars";
+import { isMultiDay, singleDayEvents, weekBars } from "@/lib/calendar/bars";
 import type { CalendarEvent } from "@/lib/calendar/events";
 import { kstDate, monthGrid } from "@/lib/calendar/kst";
 
 const ev = (over: Partial<CalendarEvent>): CalendarEvent => ({
-  id: "e", title: "t", kind: "season", mine: false, startAt: kstDate(2026, 11, 12, 12), endAt: kstDate(2026, 11, 19, 12), allDay: false,
-  url: null, note: null, source: "er-api", remindMinutes: null, ...over,
+  id: "e", title: "t", kind: "event", mine: false, startAt: kstDate(2026, 11, 12, 12), endAt: kstDate(2026, 11, 19, 12), allDay: false,
+  url: null, note: null, source: "admin", remindMinutes: null, ...over,
 });
 
 /** 2026년 11월의 주: 0 = 1~7일, 1 = 8~14일, 2 = 15~21일, 3 = 22~28일, 4 = 29일~12월 5일 */
@@ -82,5 +82,22 @@ describe("weekBars", () => {
     const point = ev({ id: "point", startAt: kstDate(2026, 11, 17, 12), endAt: null });
     expect(weekBars([one, point], week(2))).toEqual([]);
     expect(weekBars([one, point, season], week(2)).map((x) => x.event.id)).toEqual(["s"]);
+  });
+});
+
+describe("시즌 일정은 월 격자의 막대·점·이름표에서 빠진다", () => {
+  const season = ev({ id: "season", kind: "season" });
+  const event = ev({ id: "event", kind: "event" });
+  const shortSeason = ev({ id: "shortSeason", kind: "season", startAt: kstDate(2026, 11, 17, 9), endAt: kstDate(2026, 11, 17, 18) });
+  const one = ev({ id: "one", kind: "patch", startAt: kstDate(2026, 11, 17, 12), endAt: null });
+  const mine = ev({ id: "mine", kind: null, mine: true, startAt: kstDate(2026, 11, 17, 21), endAt: null });
+
+  test("weekBars 는 kind 가 season 인 여러 날 일정을 내지 않는다", () => {
+    expect(weekBars([season], week(1))).toEqual([]);
+    expect(weekBars([season], week(2))).toEqual([]);
+    expect(weekBars([season, event], week(2)).map((b) => [b.event.id, b.lane])).toEqual([["event", 0]]);
+  });
+  test("singleDayEvents 는 여러 날 일정과 시즌 일정을 뺀다", () => {
+    expect(singleDayEvents([season, event, shortSeason, one, mine]).map((e) => e.id)).toEqual(["one", "mine"]);
   });
 });

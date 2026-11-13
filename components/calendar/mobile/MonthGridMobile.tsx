@@ -1,6 +1,8 @@
-import { isMultiDay, weekBars } from "@/lib/calendar/bars";
+import { FlagIcon } from "@/components/calendar/SeasonBanner";
+import { singleDayEvents, weekBars } from "@/lib/calendar/bars";
 import { GROUP_COLOR, eventsOnDay, groupOf, type CalendarEvent } from "@/lib/calendar/events";
 import { monthGrid, type Ymd } from "@/lib/calendar/kst";
+import { seasonMarkersOnDay } from "@/lib/calendar/season";
 
 export type MonthGridProps = {
   year: number;
@@ -29,10 +31,11 @@ const BAR_TOP_PX = 38;
 
 /**
  * 휴대폰 월 보기. 칸마다 날짜 숫자를 보이고, 그 아래에 여러 날 일정을 칸을 가로지르는 얇은 막대(묶음 색, 최대 2줄)로,
- * 그 아래에 하루짜리 일정을 묶음 색 점(최대 3개)으로 보인다. 칸을 누르면 그 날짜로 onPickDay 를 불러 그날 일정 시트를 연다.
+ * 그 아래 한 줄에 시즌 표식(시작하는 날은 깃발, 끝나는 날은 네모)과 하루짜리 일정의 묶음 색 점(최대 3개)을 보인다.
+ * 시즌 일정은 막대나 점으로 그리지 않는다. 칸을 누르면 그 날짜로 onPickDay 를 불러 그날 일정 시트를 연다.
  */
 export function MonthGridMobile({ year, month, today, events, onPickDay }: MonthGridProps) {
-  const singles = events.filter((e) => !isMultiDay(e));
+  const singles = singleDayEvents(events);
   return (
     <div>
       <div className="grid grid-cols-7 border-b border-zinc-200 pb-2 text-center text-xs text-zinc-400">
@@ -51,6 +54,7 @@ export function MonthGridMobile({ year, month, today, events, onPickDay }: Month
               const isToday = sameDay(ymd, today);
               const count = inMonth ? eventsOnDay(events, ymd).length : 0;
               const dots = inMonth ? eventsOnDay(singles, ymd).slice(0, MAX_DOTS) : [];
+              const marks = inMonth ? seasonMarkersOnDay(events, ymd) : [];
               return (
                 <button
                   key={ymd.day}
@@ -74,7 +78,16 @@ export function MonthGridMobile({ year, month, today, events, onPickDay }: Month
                     {ymd.day}
                   </span>
                   {barRows > 0 && <span aria-hidden style={{ height: barRows * BAR_ROW_PX - 2 }} />}
-                  <span className="flex h-1.5 gap-0.5">
+                  <span className="flex h-2.5 items-center gap-0.5">
+                    {marks.map((m) =>
+                      m.type === "start" ? (
+                        <span key={`start-${m.event.id}`} className={GROUP_COLOR.season.text}>
+                          <FlagIcon size={10} />
+                        </span>
+                      ) : (
+                        <span key={`end-${m.event.id}`} className={`h-1.5 w-1.5 ${GROUP_COLOR.season.dot}`} />
+                      ),
+                    )}
                     {dots.map((e) => (
                       <span key={`${e.mine ? "m" : "o"}-${e.id}`} className={`h-1.5 w-1.5 rounded-full ${GROUP_COLOR[groupOf(e)].dot}`} />
                     ))}

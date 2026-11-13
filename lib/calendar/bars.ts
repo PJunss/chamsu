@@ -29,8 +29,13 @@ export function isMultiDay(e: Pick<CalendarEvent, "startAt" | "endAt">): boolean
   return last > first;
 }
 
+/** 월 격자에서 점(휴대폰)·이름표(데스크톱)로 그리는 일정: 하루짜리이고 시즌이 아닌 것. 시즌은 띠와 시작·끝 표식으로 따로 보인다. */
+export function singleDayEvents(events: readonly CalendarEvent[]): CalendarEvent[] {
+  return events.filter((e) => e.kind !== "season" && !isMultiDay(e));
+}
+
 /**
- * 한 주(7칸)에 걸치는 여러 날 일정의 막대. 시작이 이른 순, 같으면 긴 순으로 줄을 배정하고 빈 줄 중 가장 위를 쓴다.
+ * 한 주(7칸)에 걸치는 여러 날 일정의 막대. 시즌 일정은 막대로 그리지 않아 빠진다. 시작이 이른 순, 같으면 긴 순으로 줄을 배정하고 빈 줄 중 가장 위를 쓴다.
  * week 는 일요일부터 이어지는 7일이다.
  */
 export function weekBars(events: readonly CalendarEvent[], week: readonly Ymd[]): WeekBar[] {
@@ -38,7 +43,7 @@ export function weekBars(events: readonly CalendarEvent[], week: readonly Ymd[])
   const weekLast = weekFirst + week.length - 1;
 
   const spans = events
-    .filter(isMultiDay)
+    .filter((e) => e.kind !== "season" && isMultiDay(e))
     .map((event) => ({ event, ...daySpan(event) }))
     .filter((s) => s.first <= weekLast && s.last >= weekFirst)
     .sort((a, b) => a.first - b.first || b.last - a.last || a.event.startAt.getTime() - b.event.startAt.getTime());

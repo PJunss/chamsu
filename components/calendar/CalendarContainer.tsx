@@ -7,6 +7,7 @@ import { EventDetail } from "@/components/calendar/EventDetail";
 import { FilterChips } from "@/components/calendar/FilterChips";
 import { MonthHeader } from "@/components/calendar/MonthHeader";
 import { MyEventForm } from "@/components/calendar/MyEventForm";
+import { SeasonBanner } from "@/components/calendar/SeasonBanner";
 import { UpcomingList } from "@/components/calendar/UpcomingList";
 import { MonthGridDesktop } from "@/components/calendar/desktop/MonthGridDesktop";
 import { MonthGridMobile } from "@/components/calendar/mobile/MonthGridMobile";
@@ -16,6 +17,7 @@ import { useMyMonthEvents, useMyRecentEvents } from "@/components/calendar/useMy
 import { useNow } from "@/components/calendar/useNow";
 import { upcomingVisible, visibleEvents, type CalendarEvent } from "@/lib/calendar/events";
 import { addMonths, kstParts, type Ymd } from "@/lib/calendar/kst";
+import { currentAndNextSeason, seasonBannerText } from "@/lib/calendar/season";
 
 const UPCOMING_COUNT = 5;
 
@@ -54,6 +56,15 @@ function CalendarView({ now }: { now: Date }) {
     [recentOfficial.events, recentMine.events, on, now],
   );
 
+  /** 시즌 띠는 보고 있는 달과 상관없이 지금 기준이고, "시즌·이벤트" 묶음이 꺼져 있으면 숨긴다. */
+  const season = useMemo(() => {
+    if (!on.includes("season")) return null;
+    const { current, next } = currentAndNextSeason(recentOfficial.events, now);
+    const text = seasonBannerText(current, next, now);
+    const target = current ?? next;
+    return text && target ? { text, target } : null;
+  }, [recentOfficial.events, on, now]);
+
   const [detail, setDetail] = useState<CalendarEvent | null>(null);
   const [addFor, setAddFor] = useState<Ymd | null>(null);
   const closeDetail = useCallback(() => setDetail(null), []);
@@ -77,6 +88,11 @@ function CalendarView({ now }: { now: Date }) {
           />
           <FilterChips on={on} onToggle={toggle} />
         </div>
+        {season && (
+          <div className="mt-3">
+            <SeasonBanner text={season.text} onOpen={() => setDetail(season.target)} />
+          </div>
+        )}
         <div className="mt-4 md:hidden">
           <MonthGridMobile {...grid} onPickDay={setDayFor} />
         </div>
