@@ -16,7 +16,6 @@ test("컬렉션 이름은 한 곳에서 접두어를 붙인다", () => {
   expect(mongoCollections("er_")).toEqual({
     memories: "er_memories",
     memoryState: "er_memoryState",
-    rateLimits: "er_rateLimits",
     claudeLimits: "er_claudeLimits",
   });
 });
@@ -40,10 +39,9 @@ test("처음 한 번 색인을 만든다", async () => {
   expect(db).toBe(mongo.db);
   const mem = await db.collection("er_memories").indexes();
   expect(mem.some((i) => JSON.stringify(i.key) === JSON.stringify({ roomId: 1, createdAt: -1 }))).toBe(true);
-  for (const name of ["er_rateLimits", "er_claudeLimits"]) {
-    const ttl = (await db.collection(name).indexes()).find((i) => i.key.expireAt === 1);
-    expect(ttl?.expireAfterSeconds).toBe(0);
-  }
+  const ttl = (await db.collection("er_claudeLimits").indexes()).find((i) => i.key.expireAt === 1);
+  expect(ttl?.expireAfterSeconds).toBe(0);
+  expect(await db.listCollections({ name: "er_rateLimits" }).toArray()).toEqual([]);
   await getMongoDb(env({}));
   expect((await db.collection("er_dev_memories").indexes()).length).toBe(2);
 });

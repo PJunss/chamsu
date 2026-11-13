@@ -6,7 +6,6 @@ import type { PersonaConfig } from "@/lib/claude/personas";
 import { buildSystemPrompt } from "@/lib/claude/prompt";
 import { toReplyText } from "@/lib/claude/reply";
 import type { Room } from "@/lib/claude/rooms";
-import { parseAllowedNicknames } from "@/lib/nicknames";
 
 export type ContentBlock = { type: string; text?: string; id?: string; name?: string; input?: unknown };
 export type ModelResponse = { stop_reason: string | null; content: ContentBlock[] };
@@ -52,7 +51,10 @@ export async function answer(input: AnswerInput, deps: AnswerDeps = {}): Promise
   const env = deps.env ?? process.env;
   const create = deps.create ?? defaultCreate;
   const ask = deps.askHelper ?? askHelper;
-  const nicknames = deps.nicknames ?? parseAllowedNicknames(env.CHAT_NICKNAMES);
+  /** 도우미 질문에 들어가면 안 되는 이름. 따로 받지 않으면 대화 기록에 나온 사용자 이름이다. */
+  const nicknames =
+    deps.nicknames ??
+    [...new Set(history.filter((m) => m.uid !== persona.info.uid).map((m) => m.nickname.trim()))].filter((n) => n.length > 0);
   const useTools = !once && persona.useHelper !== false && helperConfigured(env);
 
   const messages: RequestTurn[] = greeting

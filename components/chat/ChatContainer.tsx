@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getClientDb } from "@/lib/firebaseClient";
 import { useMessages } from "@/components/chat/useMessages";
-import { usePresence } from "@/components/chat/usePresence";
 import { useClaudeTyping } from "@/components/chat/useClaudeTyping";
 import { useAffinity } from "@/components/chat/useAffinity";
 import { useClearedAt } from "@/components/chat/useClearedAt";
@@ -43,7 +42,6 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
 
   const cleared = useClearedAt(`rooms/${room.id}`);
   const { messages, loadOlder, hasOlder, offline } = useMessages(room.messagesPath, cleared);
-  const online = usePresence(uid, nickname);
   const typing = useClaudeTyping(room.jobsPath);
   const affinity = useAffinity(room.id, uid, cleared);
   const [claudeFailed, setClaudeFailed] = useState<string | null>(null);
@@ -85,7 +83,6 @@ export function ChatContainer({ uid, nickname }: { uid: string; nickname: string
   const props: ChatViewProps = {
     me: uid,
     messages,
-    online,
     hasOlder,
     offline,
     loadOlder,

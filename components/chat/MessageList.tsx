@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { ChatMessage } from "@/components/chat/useMessages";
-import type { OnlineUser } from "@/lib/presence";
 import { isNearBottom } from "@/lib/scroll";
 import { BotAvatar } from "@/components/chat/BotAvatar";
 import { findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
@@ -12,7 +11,6 @@ import { shownAffinity } from "@/lib/claude/affinity";
 export type ChatViewProps = {
   me: string;
   messages: ChatMessage[];
-  online: OnlineUser[];
   hasOlder: boolean;
   offline: boolean;
   loadOlder: () => Promise<void>;

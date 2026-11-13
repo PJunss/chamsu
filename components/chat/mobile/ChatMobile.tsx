@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { AffinityBadge, MessageList, type ChatViewProps } from "@/components/chat/MessageList";
-import { PresenceList } from "@/components/chat/PresenceList";
 import { RoomList } from "@/components/chat/RoomList";
 
 export function ChatMobile(p: ChatViewProps) {
-  const [open, setOpen] = useState(false);
-
   if (p.showList) {
     return (
       <div className="h-full overflow-y-auto">
@@ -28,17 +24,7 @@ export function ChatMobile(p: ChatViewProps) {
             <span className="truncate">{p.roomTitle}</span>
             {p.titleAffinity !== null && <AffinityBadge score={p.titleAffinity} />}
           </h1>
-          {p.isGroup && (
-            <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-semibold text-zinc-500">
-              접속 {p.online.length}명 {open ? "▲" : "▼"}
-            </button>
-          )}
         </div>
-        {p.isGroup && open && (
-          <div className="pt-2">
-            <PresenceList online={p.online} me={p.me} />
-          </div>
-        )}
       </header>
       <MessageList
         key={`list-${p.roomId}`}

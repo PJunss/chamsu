@@ -1,8 +1,8 @@
 import { MongoClient, type ClientSession, type Db, type Document } from "mongodb";
 
-/** 서버 전용. 봇 기억·PIN 시도·봇 사용량처럼 화면이 구독하지 않는 기록을 두는 MongoDB 연결. */
+/** 서버 전용. 봇 기억·봇 사용량처럼 화면이 구독하지 않는 기록을 두는 MongoDB 연결. */
 
-export type MongoCollectionName = "memories" | "memoryState" | "rateLimits" | "claudeLimits";
+export type MongoCollectionName = "memories" | "memoryState" | "claudeLimits";
 
 export function mongoConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.MONGODB_URI);
@@ -17,7 +17,6 @@ export function mongoCollections(prefix: string): Record<MongoCollectionName, st
   return {
     memories: `${prefix}memories`,
     memoryState: `${prefix}memoryState`,
-    rateLimits: `${prefix}rateLimits`,
     claudeLimits: `${prefix}claudeLimits`,
   };
 }
@@ -27,7 +26,6 @@ async function createIndexes(db: Db, prefix: string): Promise<void> {
   const names = mongoCollections(prefix);
   await Promise.all([
     db.collection(names.memories).createIndex({ roomId: 1, createdAt: -1 }),
-    db.collection(names.rateLimits).createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection(names.claudeLimits).createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 }),
   ]);
 }
