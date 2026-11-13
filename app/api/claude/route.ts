@@ -1,15 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { FieldValue, type Timestamp } from "firebase-admin/firestore";
-import { after } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { answer } from "@/lib/claude/answer";
-import { CHAIN_HEADER, chainOrigin, chainToken, isChainRequest } from "@/lib/claude/chainToken";
+import { verifyRequestUser } from "@/lib/authToken";
 import { AFFINITY_DEFAULT, CONTEXT_SIZE, DM_SETTLE_MS, QUESTION_TTL_MS } from "@/lib/claude/constants";
 import type { CtxMessage, Memory } from "@/lib/claude/context";
 import { consumeClaudeQuota } from "@/lib/claude/limits";
 import { recallMemories, rememberSince } from "@/lib/claude/memory";
 import { getPersonaConfig, type PersonaConfig } from "@/lib/claude/personas";
-import { isBotUid } from "@/lib/claude/personas/info";
 import { affinityScores } from "@/lib/claude/affinityNeg";
 import { applyAffinity, readAffinity } from "@/lib/claude/affinityStore";
 import { guardScore, isGuarded, type GuardResult } from "@/lib/claude/guard";
@@ -34,44 +32,12 @@ function describeError(e: unknown): [string, number | ""] {
   return [errName(e), ""];
 }
 
-type QuestionDoc = {
-  text: unknown;
-  uid: string;
-  nickname: string;
-  createdAt: Timestamp;
-  chainDepth?: unknown;
-  chainRootUid?: unknown;
-};
+type QuestionDoc = { text: unknown; uid: string; nickname: string; createdAt: Timestamp };
 
 type JobStatus = "done" | "failed" | "skipped";
 
-/** 작업 문서를 만든 봇 하나. 봇마다 타이밍 로그 한 줄을 남긴다. */
-type BotJob = { persona: PersonaConfig; timing: Timing; mark: (status: JobStatus) => Promise<void> };
-
-/** 연쇄 요청은 접수(202)까지만 기다린다. */
-const CHAIN_TIMEOUT_MS = 10_000;
-
-/** 봇 답 메시지마다 자기 /api/claude 를 불러 다음 봇이 잇게 한다. 실패하면 로그만 남기고 연쇄는 거기서 멈춘다. */
-async function chainNext(url: URL, roomId: string, messageIds: readonly string[]): Promise<void> {
-  await Promise.all(
-    messageIds.map(async (messageId) => {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json", [CHAIN_HEADER]: chainToken() },
-          body: JSON.stringify({ roomId, messageId }),
-          signal: AbortSignal.timeout(CHAIN_TIMEOUT_MS),
-        });
-        if (res.status !== 202) console.error("claude chain failed", `message=${messageId}`, `status=${res.status}`);
-      } catch (e) {
-        console.error("claude chain failed", `message=${messageId}`, errName(e));
-      }
-    }),
-  );
-}
-
 /**
- * 1:1 방 /clear: 작업 문서·연속 메시지 대기·요청 검사 없이 그 방을 지우고, 봇이 처음 만난 것처럼 인사 한 줄을 쓴다.
+ * /clear: 작업 문서·연속 메시지 대기·요청 검사 없이 그 방을 지우고, 봇이 처음 만난 것처럼 인사 한 줄을 쓴다.
  * 인사를 만들지 못하면 아무것도 쓰지 않는다(빈 방).
  */
 async function clearAndGreet(
@@ -98,8 +64,6 @@ async function clearAndGreet(
       uid: persona.info.uid,
       createdAt: FieldValue.serverTimestamp(),
       replyTo: messageId,
-      chainDepth: 1,
-      chainRootUid: q.uid,
     });
   } catch (e) {
     console.error("claude clear greeting failed", `persona=${persona.info.id}`, ...describeError(e));
@@ -120,7 +84,11 @@ export async function POST(req: Request) {
   const room = resolveRoom(roomId);
   if (!room) return fail("bad_request", 400);
   const id = messageId;
-  const internal = isChainRequest(req);
+
+  /** 요청자는 ID 토큰으로 확인하고, 방 주인일 때만 받는다. Firestore 는 그 뒤에 읽는다. */
+  const uid = await verifyRequestUser(req);
+  if (!uid) return fail("unauthorized", 401);
+  if (uid !== room.ownerUid) return fail("forbidden", 403);
 
   try {
     const db = getAdminDb();
@@ -128,17 +96,14 @@ export async function POST(req: Request) {
     const snap = await messages.doc(id).get();
     if (!snap.exists) return fail("not_found", 404);
     const q = snap.data() as QuestionDoc;
-    if (isBotUid(q.uid) && !internal) return fail("forbidden", 403);
     const target = typeof q.text === "string" ? pickTarget(room, { uid: q.uid, text: q.text }) : null;
-    const personas = target ? [getPersonaConfig(target.persona.id)].filter((p) => p !== null) : [];
-    if (!target || personas.length === 0) return fail("bad_request", 400);
+    const persona = target ? getPersonaConfig(target.persona.id) : null;
+    if (!target || !persona) return fail("bad_request", 400);
     const now = Date.now();
     if (!q.createdAt || now - q.createdAt.toMillis() > QUESTION_TTL_MS) return fail("expired", 410);
     const { question } = target;
-    const chainDepth = 1;
-    const chainRootUid = q.uid;
 
-    if (isClearCommand(room, q)) return await clearAndGreet(db, room, personas[0], q, id);
+    if (isClearCommand(room, q)) return await clearAndGreet(db, room, persona, q, id);
 
     /** 대화 기록·기억·호감도는 방을 지운 시각 이후만 본다. */
     const clearedAt = await readClearedAt(db, room.id);
@@ -146,73 +111,68 @@ export async function POST(req: Request) {
     /** 호감도 시각은 앱 서버 시계라 Firestore 서버 시각인 clearedAt 보다 뒤처질 수 있다. 지운 뒤 저장한 값이 지운 이전으로 보이지 않게 맞춘다. */
     const affinityNow = clearedAtMs !== null ? Math.max(now, clearedAtMs + 1) : now;
 
-    /** 작업 문서는 봇마다 `{messageId}_{personaId}` 로 만든다. 이미 있는 봇은 다른 호출이 처리 중이라 건너뛴다. */
-    const settled = await Promise.allSettled(
-      personas.map(async (persona): Promise<BotJob | null> => {
-        const timing = createTiming();
-        const ref = db.collection(room.jobsPath).doc(`${id}_${persona.info.id}`);
-        const ok = await db.runTransaction(async (tx) => {
-          if ((await tx.get(ref)).exists) return false;
-          tx.set(ref, {
-            status: "pending",
-            createdAt: FieldValue.serverTimestamp(),
-            askedBy: chainRootUid,
-            personaId: persona.info.id,
-          });
-          return true;
+    /** 작업 문서는 `{messageId}_{personaId}` 로 만든다. 이미 있으면 다른 호출이 처리 중이라 받지 않는다. */
+    const timing: Timing = createTiming();
+    const logTiming = () => console.log("claude timing", `persona=${persona.info.id}`, timing.line());
+    const jobRef = db.collection(room.jobsPath).doc(`${id}_${persona.info.id}`);
+    let created: boolean;
+    try {
+      created = await db.runTransaction(async (tx) => {
+        if ((await tx.get(jobRef)).exists) return false;
+        tx.set(jobRef, {
+          status: "pending",
+          createdAt: FieldValue.serverTimestamp(),
+          askedBy: uid,
+          personaId: persona.info.id,
         });
-        if (!ok) return null;
-        timing.note("room", room.id);
-        timing.note("lag", now - q.createdAt.toMillis());
-        timing.lap("accept");
-        /** 작업 상태 갱신 실패는 답의 성공·실패를 바꾸지 않는다. 표시는 2분 뒤 사라진다. */
-        const mark = (status: JobStatus) =>
-          ref.update({ status }).then(
-            () => {},
-            (e: unknown) => {
-              console.error("claude job update failed", errName(e));
-            },
-          );
-        return { persona, timing, mark };
-      }),
-    );
-    const jobs = settled.flatMap((r) => (r.status === "fulfilled" && r.value ? [r.value] : []));
-    const logTimings = () => {
-      for (const j of jobs) console.log("claude timing", `persona=${j.persona.info.id}`, j.timing.line());
-    };
-    const rejected = settled.find((r) => r.status === "rejected");
-    if (rejected) {
-      console.error("claude job create failed", errName(rejected.reason));
-      await Promise.all(jobs.map((j) => j.mark("failed")));
-      for (const j of jobs) j.timing.note("result", "job_create_failed");
-      logTimings();
+        return true;
+      });
+    } catch (e) {
+      console.error("claude job create failed", errName(e));
       return fail("server_error", 500);
     }
-    if (jobs.length === 0) return fail("duplicate", 409);
+    if (!created) return fail("duplicate", 409);
+    timing.note("lag", now - q.createdAt.toMillis());
+    timing.lap("accept");
+    /** 작업 상태 갱신 실패는 답의 성공·실패를 바꾸지 않는다. 표시는 2분 뒤 사라진다. */
+    const mark = (status: JobStatus) =>
+      jobRef.update({ status }).then(
+        () => {},
+        (e: unknown) => {
+          console.error("claude job update failed", errName(e));
+        },
+      );
 
-    {
-      try {
-        await sleep(DM_SETTLE_MS);
-        const newer = await messages.where("createdAt", ">", q.createdAt).orderBy("createdAt").limit(50).get();
-        const skip = newer.docs.some((d) => d.data().uid === room.ownerUid);
-        for (const j of jobs) j.timing.lap("settle");
-        if (skip) {
-          await Promise.all(jobs.map((j) => j.mark("skipped")));
-          for (const j of jobs) j.timing.note("result", "skipped");
-          logTimings();
-          return Response.json({ skipped: true });
-        }
-      } catch (e) {
-        await Promise.all(jobs.map((j) => j.mark("failed")));
-        logTimings();
-        throw e;
+    /** 주인이 이어서 보낸 메시지가 있으면 이 질문은 건너뛰고, 마지막 메시지의 호출이 한 번에 답한다. */
+    try {
+      await sleep(DM_SETTLE_MS);
+      const newer = await messages.where("createdAt", ">", q.createdAt).orderBy("createdAt").limit(50).get();
+      const skip = newer.docs.some((d) => d.data().uid === room.ownerUid);
+      timing.lap("settle");
+      if (skip) {
+        await mark("skipped");
+        timing.note("result", "skipped");
+        logTiming();
+        return Response.json({ skipped: true });
       }
+    } catch (e) {
+      await mark("failed");
+      logTiming();
+      throw e;
     }
 
-    /** 실제 답을 쓴 봇의 답 메시지. 다음 연쇄를 고르는 데 쓴다. */
-    const answered: { id: string; uid: string; text: string }[] = [];
+    const guardP: Promise<GuardResult> = guardScore(q.nickname, question);
+    /** 걸린 메시지에는 guarded 를 남겨 기억 판정에서 빠지게 한다. 실패해도 답에는 영향이 없다. */
+    const guardMarked = guardP.then(async (g) => {
+      if (!isGuarded(g)) return;
+      try {
+        await messages.doc(id).update({ guarded: true });
+      } catch (e) {
+        console.error("claude guarded mark failed", errName(e));
+      }
+    });
 
-    const runBot = async ({ persona, timing, mark }: BotJob, guardP: Promise<GuardResult>): Promise<BotResult> => {
+    const runBot = async (): Promise<BotResult> => {
       const reply = (text: string) =>
         messages.add({
           text,
@@ -220,11 +180,9 @@ export async function POST(req: Request) {
           uid: persona.info.uid,
           createdAt: FieldValue.serverTimestamp(),
           replyTo: id,
-          chainDepth,
-          chainRootUid,
         });
       try {
-        const quota = await consumeClaudeQuota(chainRootUid, now);
+        const quota = await consumeClaudeQuota(uid, now);
         timing.lap("quota");
         if (quota !== "ok") {
           await reply(quota === "user" ? persona.replyText.userLimited : persona.replyText.dailyLimited);
@@ -258,29 +216,26 @@ export async function POST(req: Request) {
         timing.lap(useMemory ? "recall" : "guard");
         if (useMemory) timing.note("recalled", memories.length);
 
-        /** 사람 메시지만 호감도를 정한다. Jev 점수가 있으면 답 만들기 전에 저장하고, 없으면 읽기만 한다. */
-        let affinity: { nickname: string; score: number } | undefined;
-        if (!isBotUid(q.uid)) {
-          const key = { roomId: room.id, personaId: persona.info.id, uid: q.uid, now: affinityNow, clearedAtMs };
-          let score: number;
-          try {
-            if (checked && "guard" in checked) {
-              const s = affinityScores(checked, typeof q.text === "string" ? q.text : "", guarded);
-              const r = await applyAffinity(db, { ...key, pos: s.pos, neg: s.neg });
-              score = r.score;
-              timing.note("affinity_delta", r.delta.toFixed(3));
-            } else {
-              score = await readAffinity(db, key);
-            }
-          } catch (e) {
-            console.error("claude affinity failed", `persona=${persona.info.id}`, errName(e));
-            timing.note("affinity_error", errName(e));
-            score = await readAffinity(db, key).catch(() => AFFINITY_DEFAULT);
+        /** Jev 점수가 있으면 답 만들기 전에 호감도를 저장하고, 없으면 읽기만 한다. */
+        const key = { roomId: room.id, personaId: persona.info.id, uid, now: affinityNow, clearedAtMs };
+        let score: number;
+        try {
+          if (checked && "guard" in checked) {
+            const s = affinityScores(checked, typeof q.text === "string" ? q.text : "", guarded);
+            const r = await applyAffinity(db, { ...key, pos: s.pos, neg: s.neg });
+            score = r.score;
+            timing.note("affinity_delta", r.delta.toFixed(3));
+          } else {
+            score = await readAffinity(db, key);
           }
-          timing.note("affinity", score.toFixed(3));
-          timing.lap("affinity_ms");
-          affinity = { nickname: q.nickname, score };
+        } catch (e) {
+          console.error("claude affinity failed", `persona=${persona.info.id}`, errName(e));
+          timing.note("affinity_error", errName(e));
+          score = await readAffinity(db, key).catch(() => AFFINITY_DEFAULT);
         }
+        timing.note("affinity", score.toFixed(3));
+        timing.lap("affinity_ms");
+        const affinity = { nickname: q.nickname, score };
 
         let text: string;
         try {
@@ -294,8 +249,7 @@ export async function POST(req: Request) {
           await mark("failed");
           return "failed";
         }
-        const ref = await reply(text);
-        answered.push({ id: ref.id, uid: persona.info.uid, text });
+        await reply(text);
         await mark("done");
         timing.lap("reply");
         timing.note("result", "ok");
@@ -308,66 +262,28 @@ export async function POST(req: Request) {
       }
     };
 
-    /** 답 만들기·쓰기·기억 저장·다음 연쇄 예약. 사람 요청은 이 결과로 응답하고, 연쇄 요청은 after() 안에서 돌린다. */
-    const finish = async (): Promise<Response> => {
-      /** 사람 메시지만 요청 하나에 한 번 검사하고, 부른 봇 모두가 같은 결과를 쓴다. */
-      const guardP: Promise<GuardResult> = isBotUid(q.uid) ? Promise.resolve(null) : guardScore(q.nickname, question);
-      /** 걸린 메시지에는 guarded 를 남겨 기억 판정에서 빠지게 한다. 실패해도 답에는 영향이 없다. */
-      const guardMarked = guardP.then(async (g) => {
-        if (!isGuarded(g)) return;
-        try {
-          await messages.doc(id).update({ guarded: true });
-        } catch (e) {
-          console.error("claude guarded mark failed", errName(e));
-        }
-      });
-      let results: BotResult[];
-      try {
-        results = await Promise.all(jobs.map((j) => runBot(j, guardP)));
-      } finally {
-        logTimings();
-      }
-
-      await guardMarked;
-
-      /** 기억 저장은 요청 하나에서 모든 봇의 답을 쓴 뒤 한 번만 돈다. */
-      if (jobs.some((j, i) => results[i] === "ok" && j.persona.useMemory !== false)) {
-        try {
-          const r = await rememberSince(db, room, q.createdAt);
-          console.log("claude remember", `judged=${r.judged}`, `saved=${r.saved}`);
-        } catch (e) {
-          console.error("remember failed", errName(e));
-          console.log("claude remember", `error=${errName(e)}`);
-        }
-      }
-
-      const next = answered.filter((a) => pickTarget(room, { uid: a.uid, text: a.text })).map((a) => a.id);
-      if (next.length > 0) {
-        const origin = chainOrigin(process.env, req.url);
-        if (origin) {
-          const url = new URL("/api/claude", origin);
-          after(() => chainNext(url, room.id, next));
-        } else {
-          console.log("claude chain skipped", "reason=no_origin");
-        }
-      }
-
-      const outcome = decideOutcome(results);
-      if (outcome !== "ok") return fail(outcome.error, outcome.status);
-      return Response.json({ ok: true, personas: jobs.filter((_, i) => results[i] === "ok").map((j) => j.persona.info.id) });
-    };
-
-    if (internal) {
-      after(async () => {
-        try {
-          await finish();
-        } catch (e) {
-          console.error("claude route failed", errName(e));
-        }
-      });
-      return Response.json({ accepted: jobs.map((j) => j.persona.info.id) }, { status: 202 });
+    let result: BotResult;
+    try {
+      result = await runBot();
+    } finally {
+      logTiming();
     }
-    return await finish();
+
+    await guardMarked;
+
+    if (result === "ok" && persona.useMemory !== false) {
+      try {
+        const r = await rememberSince(db, room, q.createdAt);
+        console.log("claude remember", `judged=${r.judged}`, `saved=${r.saved}`);
+      } catch (e) {
+        console.error("remember failed", errName(e));
+        console.log("claude remember", `error=${errName(e)}`);
+      }
+    }
+
+    const outcome = decideOutcome([result]);
+    if (outcome !== "ok") return fail(outcome.error, outcome.status);
+    return Response.json({ ok: true, personas: [persona.info.id] });
   } catch (e) {
     console.error("claude route failed", errName(e));
     return fail("server_error", 500);

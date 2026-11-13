@@ -16,9 +16,6 @@ export type ChatMessage = {
   nickname: string;
   uid: string;
   createdAt: Date | null;
-  /** 봇 답에만 있다. 연쇄 단계와 연쇄를 시작한 사람 uid. */
-  chainDepth?: number;
-  chainRootUid?: string;
 };
 
 function toMessage(d: QueryDocumentSnapshot): ChatMessage {
@@ -29,8 +26,6 @@ function toMessage(d: QueryDocumentSnapshot): ChatMessage {
     nickname: data.nickname,
     uid: data.uid,
     createdAt: data.createdAt?.toDate?.() ?? null,
-    ...(typeof data.chainDepth === "number" ? { chainDepth: data.chainDepth } : {}),
-    ...(typeof data.chainRootUid === "string" ? { chainRootUid: data.chainRootUid } : {}),
   };
 }
 
