@@ -39,8 +39,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("verifyIdToken", () => {
   test("올바른 토큰이면 uid", async () => {
-    expect(await check(sign(claims()))).toEqual({ uid: "u1" });
+    expect(await check(sign(claims()))).toEqual({ uid: "u1", admin: false });
     expect(fetchKeys).toHaveBeenCalledTimes(1);
+  });
+  test("payload 의 admin 이 true 일 때만 관리자다", async () => {
+    expect(await check(sign(claims({ admin: true })))).toEqual({ uid: "u1", admin: true });
+    expect(await check(sign(claims({ admin: "true" })))).toEqual({ uid: "u1", admin: false });
+    expect(await check(sign(claims({ admin: 1 })))).toEqual({ uid: "u1", admin: false });
+    expect(await check(sign(claims({ admin: false })))).toEqual({ uid: "u1", admin: false });
   });
   test("다른 키로 서명한 토큰은 거부", async () => {
     await expect(check(sign(claims(), undefined, other.privateKey))).rejects.toThrow();
@@ -61,7 +67,7 @@ describe("verifyIdToken", () => {
   });
   test("다시 받은 키에 kid 가 있으면 통과", async () => {
     fetchKeys.mockResolvedValueOnce({});
-    expect(await check(sign(claims()))).toEqual({ uid: "u1" });
+    expect(await check(sign(claims()))).toEqual({ uid: "u1", admin: false });
     expect(fetchKeys).toHaveBeenCalledTimes(2);
   });
   test("aud 가 다르면 거부", async () => {
@@ -76,7 +82,7 @@ describe("verifyIdToken", () => {
     await expect(check(sign(claims({ exp: "later" })))).rejects.toThrow();
   });
   test("미래의 iat·auth_time 은 거부하되 60초 안쪽은 허용", async () => {
-    expect(await check(sign(claims({ iat: SEC + 60, auth_time: SEC + 60 })))).toEqual({ uid: "u1" });
+    expect(await check(sign(claims({ iat: SEC + 60, auth_time: SEC + 60 })))).toEqual({ uid: "u1", admin: false });
     await expect(check(sign(claims({ iat: SEC + 61 })))).rejects.toThrow();
     await expect(check(sign(claims({ auth_time: SEC + 61 })))).rejects.toThrow();
     await expect(check(sign(claims({ iat: undefined })))).rejects.toThrow();
@@ -85,7 +91,7 @@ describe("verifyIdToken", () => {
     await expect(check(sign(claims({ sub: "" })))).rejects.toThrow();
     await expect(check(sign(claims({ sub: 3 })))).rejects.toThrow();
     await expect(check(sign(claims({ sub: "a".repeat(129) })))).rejects.toThrow();
-    expect(await check(sign(claims({ sub: "a".repeat(128) })))).toEqual({ uid: "a".repeat(128) });
+    expect(await check(sign(claims({ sub: "a".repeat(128) })))).toEqual({ uid: "a".repeat(128), admin: false });
   });
   test("형식이 틀린 문자열은 거부", async () => {
     for (const bad of ["", "abc", "a.b", "a.b.c.d", "!!.??.**", `${b64([1])}.${b64(claims())}.x`]) {
@@ -111,15 +117,15 @@ describe("기본 키 받기", () => {
     const f = stubFetch(3600);
     let now = NOW;
     const d = { now: () => now, projectId: PROJECT };
-    expect(await verifyIdToken(sign(claims()), d)).toEqual({ uid: "u1" });
+    expect(await verifyIdToken(sign(claims()), d)).toEqual({ uid: "u1", admin: false });
     now = NOW + 3_599_000;
-    expect(await verifyIdToken(sign(claims({ exp: SEC + 7200 })), d)).toEqual({ uid: "u1" });
+    expect(await verifyIdToken(sign(claims({ exp: SEC + 7200 })), d)).toEqual({ uid: "u1", admin: false });
     expect(f).toHaveBeenCalledTimes(1);
     expect(String(f.mock.calls[0][0])).toBe(
       "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com",
     );
     now = NOW + 3_600_000;
-    expect(await verifyIdToken(sign(claims({ exp: SEC + 7200 })), d)).toEqual({ uid: "u1" });
+    expect(await verifyIdToken(sign(claims({ exp: SEC + 7200 })), d)).toEqual({ uid: "u1", admin: false });
     expect(f).toHaveBeenCalledTimes(2);
   });
   test("모르는 kid 면 캐시를 버리고 한 번 더 받는다", async () => {

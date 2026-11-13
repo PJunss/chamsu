@@ -19,3 +19,19 @@ export async function verifyRequestUser(
     return null;
   }
 }
+
+/** 관리자 요청인지 확인한다. 토큰이 없거나 틀리면 "unauthorized", 관리자 표시가 없으면 "forbidden". */
+export async function verifyAdminRequest(
+  req: Request,
+  verify: (token: string) => Promise<{ uid: string; admin: boolean }> = (t) => verifyIdToken(t),
+): Promise<{ ok: true; uid: string } | { ok: false; error: "unauthorized" | "forbidden" }> {
+  const token = bearerToken(req);
+  if (!token) return { ok: false, error: "unauthorized" };
+  let user: { uid: string; admin: boolean };
+  try {
+    user = await verify(token);
+  } catch {
+    return { ok: false, error: "unauthorized" };
+  }
+  return user.admin === true ? { ok: true, uid: user.uid } : { ok: false, error: "forbidden" };
+}

@@ -54,8 +54,11 @@ function validSignature(pem: string, signed: string, signature: string): boolean
   }
 }
 
-/** Firebase ID 토큰(JWT)을 확인해 uid(sub)를 준다. 하나라도 어긋나면 throw. */
-export async function verifyIdToken(token: string, deps: IdTokenDeps = {}): Promise<{ uid: string }> {
+/**
+ * Firebase ID 토큰(JWT)을 확인해 uid(sub)와 관리자 표시를 준다. 하나라도 어긋나면 throw.
+ * admin 은 payload 의 admin 이 true(불리언)일 때만 true 다.
+ */
+export async function verifyIdToken(token: string, deps: IdTokenDeps = {}): Promise<{ uid: string; admin: boolean }> {
   const now = deps.now ?? Date.now;
   const projectId = deps.projectId ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   if (!projectId) throw invalid("no_project");
@@ -88,5 +91,5 @@ export async function verifyIdToken(token: string, deps: IdTokenDeps = {}): Prom
   if (typeof exp !== "number" || exp <= nowSec) throw invalid("expired");
   if (typeof iat !== "number" || iat > nowSec + CLOCK_SKEW_SEC) throw invalid("iat");
   if (typeof authTime !== "number" || authTime > nowSec + CLOCK_SKEW_SEC) throw invalid("auth_time");
-  return { uid: sub };
+  return { uid: sub, admin: claims.admin === true };
 }
