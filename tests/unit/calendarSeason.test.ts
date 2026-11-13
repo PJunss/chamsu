@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { CalendarEvent } from "@/lib/calendar/events";
 import { kstDate } from "@/lib/calendar/kst";
-import { SEASON_COLORS } from "@/components/calendar/seasonColors";
+import { PRE_SEASON_COLOR, SEASON_COLORS, seasonColorOf } from "@/components/calendar/seasonColors";
 import {
-  SEASON_COLOR_COUNT, currentAndNextSeason, seasonBannerText, seasonColorIndex, seasonMarkersOnDay, seasonOnDay, seasonProgress,
+  SEASON_COLOR_COUNT, currentAndNextSeason, isPreSeason, seasonBannerText, seasonColorIndex, seasonColorKey, seasonMarkersOnDay, seasonOnDay,
+  seasonProgress,
 } from "@/lib/calendar/season";
 
 const ev = (over: Partial<CalendarEvent>): CalendarEvent => ({
@@ -166,5 +167,29 @@ describe("seasonOnDay", () => {
   });
   test("시즌이 아닌 일정은 무시한다", () => {
     expect(on([patch], 2026, 11, 15)).toBeNull();
+  });
+});
+
+describe("프리시즌 색", () => {
+  test("isPreSeason: 제목이 프리시즌으로 끝나거나 Pre-Season 으로 시작하는 시즌 일정", () => {
+    expect(isPreSeason({ title: "시즌 13 프리시즌", kind: "season" })).toBe(true);
+    expect(isPreSeason({ title: "Pre-Season22", kind: "season" })).toBe(true);
+    expect(isPreSeason({ title: "시즌 13", kind: "season" })).toBe(false);
+    expect(isPreSeason({ title: "프리시즌 안내 방송", kind: "season" })).toBe(false);
+    expect(isPreSeason({ title: "시즌 13 프리시즌", kind: "event" })).toBe(false);
+    expect(isPreSeason({ title: "내 프리시즌", kind: null })).toBe(false);
+  });
+  test("seasonColorKey: 프리시즌은 모두 pre, 정규 시즌은 색 번호", () => {
+    expect(seasonColorKey({ id: "season-42", title: "시즌 13 프리시즌", kind: "season" })).toBe("pre");
+    expect(seasonColorKey({ id: "season-40", title: "시즌 12 프리시즌", kind: "season" })).toBe("pre");
+    expect(seasonColorKey({ id: "season-43", title: "시즌 13", kind: "season" })).toBe(3);
+    expect(seasonColorKey({ id: "season-41", title: "시즌 12", kind: "season" })).toBe(1);
+  });
+  test("프리시즌 색 묶음은 정규 4색과 다르고, 화면은 seasonColorKey 대로 색을 고른다", () => {
+    expect(SEASON_COLORS.map((c) => c.soft)).not.toContain(PRE_SEASON_COLOR.soft);
+    expect(SEASON_COLORS.map((c) => c.solid)).not.toContain(PRE_SEASON_COLOR.solid);
+    expect(seasonColorOf({ id: "season-42", title: "시즌 13 프리시즌", kind: "season" })).toBe(PRE_SEASON_COLOR);
+    expect(seasonColorOf({ id: "season-40", title: "시즌 12 프리시즌", kind: "season" })).toBe(PRE_SEASON_COLOR);
+    expect(seasonColorOf({ id: "season-43", title: "시즌 13", kind: "season" })).toBe(SEASON_COLORS[3]);
   });
 });

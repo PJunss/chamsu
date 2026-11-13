@@ -106,3 +106,15 @@ export function seasonOnDay(events: readonly CalendarEvent[], ymd: Ymd): Calenda
   );
   return onDay[onDay.length - 1] ?? null;
 }
+
+/** 프리시즌 일정인지. 제목이 "프리시즌" 으로 끝나거나 "Pre-Season" 으로 시작하면 프리시즌이다. kind 가 season 이 아니면 false. */
+export function isPreSeason(e: Pick<CalendarEvent, "title" | "kind">): boolean {
+  if (e.kind !== "season") return false;
+  const title = e.title.trim();
+  return title.endsWith("프리시즌") || title.startsWith("Pre-Season");
+}
+
+/** 시즌 일정의 색 종류. 프리시즌이면 "pre"(모든 프리시즌이 같은 색), 정규 시즌이면 0~3 의 색 번호. */
+export function seasonColorKey(e: Pick<CalendarEvent, "id" | "title" | "kind">): "pre" | number {
+  return isPreSeason(e) ? "pre" : seasonColorIndex(e);
+}
