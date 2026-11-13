@@ -138,6 +138,22 @@ describe("PATCH /api/admin/events/{id}", () => {
   });
 });
 
+describe("id 검사", () => {
+  test("빈 값, 점만 있는 값, 빗금이 든 값, 너무 긴 값은 400 이고 Firestore 를 읽지 않는다", async () => {
+    seedEvent("e1", "admin");
+    for (const id of ["", ".", "..", "a/b", "__x__", "a".repeat(1501)]) {
+      const patched = await PATCH(req("PATCH", input()), ctx(id));
+      expect(patched.status).toBe(400);
+      expect(await patched.json()).toEqual({ error: "bad_request", field: "id" });
+      const deleted = await DELETE(req("DELETE"), ctx(id));
+      expect(deleted.status).toBe(400);
+      expect(await deleted.json()).toEqual({ error: "bad_request", field: "id" });
+    }
+    expect(fake.reads).toEqual([]);
+    expect(events().size).toBe(1);
+  });
+});
+
 describe("DELETE /api/admin/events/{id}", () => {
   test("없는 id 는 404", async () => {
     expect((await DELETE(req("DELETE"), ctx("nope"))).status).toBe(404);

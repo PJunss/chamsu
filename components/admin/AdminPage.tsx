@@ -26,7 +26,7 @@ export function AdminPage() {
   if (auth.status === "out") {
     return (
       <div className="h-dvh">
-        <LoginPrompt title="관리자" />
+        <LoginPrompt title="관리자" heading="관리자 계정으로 로그인하세요" description={null} />
       </div>
     );
   }

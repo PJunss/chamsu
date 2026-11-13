@@ -67,8 +67,8 @@ export function MyEventForm({ uid, ymd, onClose }: { uid: string | null; ymd: Ym
   return (
     <Sheet label="내 일정 추가" onClose={onClose} header={<h2 className="text-lg font-bold text-zinc-900">내 일정 추가</h2>}>
       {uid === null ? (
-        <div className="h-[420px]">
-          <LoginPrompt />
+        <div className="h-[380px]">
+          <LoginPrompt heading="로그인하고 내 일정을 넣어 보세요" description="넣은 일정은 나만 볼 수 있어요" />
         </div>
       ) : (
         <form
