@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
-  FILTER_GROUPS, QUERY_BACK_DAYS, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, upcomingVisible, visibleEvents, whenText,
+  FILTER_GROUPS, QUERY_BACK_DAYS, dayTitle, ddayText, eventsOnDay, groupOf, monthQueryRange, overlapsMonth, upcomingEvents, upcomingVisible, visibleEvents, whenText,
   type CalendarEvent,
 } from "@/lib/calendar/events";
 import { kstDate } from "@/lib/calendar/kst";
@@ -127,4 +127,10 @@ describe("upcomingVisible", () => {
     expect(upcomingVisible(official, mine, ALL, now, 2).map((e) => e.id)).toEqual(["season", "duo"]);
     expect(upcomingVisible(official, mine, ["maint", "match", "mine"], now, 2).map((e) => e.id)).toEqual(["duo", "patch"]);
   });
+});
+
+test("dayTitle: 그날 일정 시트의 제목", () => {
+  expect(dayTitle({ year: 2026, month: 11, day: 14 })).toBe("11월 14일 (토)");
+  expect(dayTitle({ year: 2026, month: 11, day: 1 })).toBe("11월 1일 (일)");
+  expect(dayTitle({ year: 2027, month: 1, day: 5 })).toBe("1월 5일 (화)");
 });

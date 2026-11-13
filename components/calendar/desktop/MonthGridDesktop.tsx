@@ -6,9 +6,9 @@ const MAX_LABELS = 3;
 
 /**
  * 데스크톱 월 보기. 칸마다 날짜 숫자와 일정 이름표(옅은 묶음 색 바탕, 최대 3개, 넘치면 "+n")를 보인다.
- * 이름표를 누르면 onOpenEvent, 칸의 빈 곳을 누르면 그 날짜로 onPickDay 를 부른다.
+ * 이름표를 누르면 onOpenEvent, "+n" 을 누르면 onOpenDay, 칸의 빈 곳을 누르면 그 날짜로 onPickDay 를 부른다.
  */
-export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpenEvent }: MonthGridProps) {
+export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpenDay, onOpenEvent }: MonthGridProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="grid grid-cols-7 border-b border-zinc-200 pb-1.5 text-xs text-zinc-400">
@@ -58,7 +58,18 @@ export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpen
                       </button>
                     </li>
                   ))}
-                  {more > 0 && <li className="px-1.5 text-[11px] text-zinc-400">+{more}</li>}
+                  {more > 0 && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => onOpenDay(ymd)}
+                        aria-label={`${ymd.month}월 ${ymd.day}일 일정 ${more}개 더 보기`}
+                        className="pointer-events-auto rounded px-1.5 text-[11px] text-zinc-500 hover:bg-zinc-100"
+                      >
+                        +{more}
+                      </button>
+                    </li>
+                  )}
                 </ul>
               </div>
             );

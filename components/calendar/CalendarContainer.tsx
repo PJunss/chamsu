@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { DaySheet } from "@/components/calendar/DaySheet";
 import { EventDetail } from "@/components/calendar/EventDetail";
 import { FilterChips } from "@/components/calendar/FilterChips";
 import { MonthHeader } from "@/components/calendar/MonthHeader";
@@ -25,7 +26,7 @@ export function CalendarContainer() {
 }
 
 /**
- * 월 보기와 다가오는 일정. 공식 일정과 내 일정의 구독, 필터, 창(상세·내 일정 추가) 상태는 여기 한 곳에 두고
+ * 월 보기와 다가오는 일정. 공식 일정과 내 일정의 구독, 필터, 창(그날 일정·상세·내 일정 추가) 상태는 여기 한 곳에 두고
  * 월 격자만 휴대폰·데스크톱 컴포넌트로 나눈다.
  */
 function CalendarView({ now }: { now: Date }) {
@@ -56,9 +57,12 @@ function CalendarView({ now }: { now: Date }) {
   const [detail, setDetail] = useState<CalendarEvent | null>(null);
   const [addFor, setAddFor] = useState<Ymd | null>(null);
   const closeDetail = useCallback(() => setDetail(null), []);
+  /** 그날 일정 시트를 띄운 날짜. */
+  const [dayFor, setDayFor] = useState<Ymd | null>(null);
   const closeAdd = useCallback(() => setAddFor(null), []);
+  const closeDay = useCallback(() => setDayFor(null), []);
 
-  const grid = { year, month, today, events: visible, onPickDay: setAddFor, onOpenEvent: setDetail };
+  const grid = { year, month, today, events: visible, onOpenDay: setDayFor, onOpenEvent: setDetail };
 
   return (
     <div className="flex min-h-full flex-col md:h-full md:flex-row">
@@ -74,16 +78,32 @@ function CalendarView({ now }: { now: Date }) {
           <FilterChips on={on} onToggle={toggle} />
         </div>
         <div className="mt-4 md:hidden">
-          <MonthGridMobile {...grid} />
+          <MonthGridMobile {...grid} onPickDay={setDayFor} />
         </div>
         <div className="mt-4 hidden min-h-0 flex-1 md:block">
-          <MonthGridDesktop {...grid} />
+          <MonthGridDesktop {...grid} onPickDay={setAddFor} />
         </div>
       </div>
       <aside className="px-4 pb-6 pt-7 md:w-[320px] md:shrink-0 md:overflow-y-auto md:border-l md:border-zinc-200 md:px-5 md:pt-7">
         <UpcomingList events={upcoming} now={now} ready={recentOfficial.ready && recentMine.ready} onOpen={setDetail} />
       </aside>
 
+      {dayFor && (
+        <DaySheet
+          ymd={dayFor}
+          events={visible}
+          now={now}
+          onOpenEvent={(e) => {
+            setDayFor(null);
+            setDetail(e);
+          }}
+          onAdd={(ymd) => {
+            setDayFor(null);
+            setAddFor(ymd);
+          }}
+          onClose={closeDay}
+        />
+      )}
       {detail && <EventDetail event={detail} now={now} uid={uid} onClose={closeDetail} />}
       {addFor && auth.status !== "loading" && <MyEventForm uid={uid} ymd={addFor} onClose={closeAdd} />}
     </div>

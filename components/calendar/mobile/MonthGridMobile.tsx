@@ -8,8 +8,10 @@ export type MonthGridProps = {
   today: Ymd;
   /** 그 달에 걸치는 일정 중 필터로 고른 것. */
   events: readonly CalendarEvent[];
-  /** 날짜 칸을 눌렀을 때. */
+  /** 날짜 칸을 눌렀을 때. 휴대폰은 그날 일정 시트, 데스크톱은 내 일정 추가를 연다. */
   onPickDay: (ymd: Ymd) => void;
+  /** 그날 일정 목록을 열 때(데스크톱의 "+n"). */
+  onOpenDay: (ymd: Ymd) => void;
   /** 일정을 눌렀을 때. */
   onOpenEvent: (e: CalendarEvent) => void;
 };
@@ -20,7 +22,7 @@ const MAX_DOTS = 3;
 
 /**
  * 휴대폰 월 보기. 칸마다 날짜 숫자와 그 날 일정의 묶음 색 점(최대 3개)을 보인다.
- * 여러 날 일정은 걸친 날마다 점으로 보인다. 칸을 누르면 그 날짜로 onPickDay 를 부른다.
+ * 여러 날 일정은 걸친 날마다 점으로 보인다. 칸을 누르면 그 날짜로 onPickDay 를 불러 그날 일정 시트를 연다.
  */
 export function MonthGridMobile({ year, month, today, events, onPickDay }: MonthGridProps) {
   return (

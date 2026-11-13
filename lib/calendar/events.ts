@@ -117,6 +117,11 @@ export function upcomingVisible(
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 const two = (n: number) => String(n).padStart(2, "0");
 
+/** 날짜 하나의 제목. "11월 14일 (토)". */
+export function dayTitle(ymd: Ymd): string {
+  return `${ymd.month}월 ${ymd.day}일 (${WEEKDAYS[kstParts(kstDate(ymd.year, ymd.month, ymd.day)).weekday]})`;
+}
+
 /**
  * 일정 시각 문구(KST). "11.19 (목) 06:00 ~ 12:00", 끝나는 날이 다르면 "11.19 (목) 12:00 ~ 11.26",
  * 하루 종일이면 시각 없이. 시작이 올해가 아니거나 끝이 시작과 다른 해면 그 날짜에 연도를 붙인다.
