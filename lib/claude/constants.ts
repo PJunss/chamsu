@@ -47,6 +47,16 @@ export const AFFINITY_GAIN_MIN = 0.5;
 /** 주인의 연속 메시지를 한 번에 답하려고 답하기 전에 기다리는 시간. */
 export const DM_SETTLE_MS = 1_500;
 
-/** 봇 사용량 제한. 값이 null 인 제한은 검사하지 않는다. 켤 때의 예: { user: { windowMs: 60_000, max: 5 }, dailyMax: 200 } */
-export type ClaudeLimits = { user: { windowMs: number; max: number } | null; dailyMax: number | null };
-export const CLAUDE_LIMITS: ClaudeLimits = { user: null, dailyMax: null };
+/**
+ * 봇 사용량 제한. 값이 null 인 제한은 검사하지 않는다.
+ * user 는 한 사람이 시간 창 안에 부를 수 있는 횟수, userDailyMax 는 한 사람의 하루 횟수, dailyMax 는 모든 사용자를 합친 하루 횟수다.
+ */
+export type ClaudeLimits = {
+  user: { windowMs: number; max: number } | null;
+  userDailyMax: number | null;
+  dailyMax: number | null;
+};
+/** 한 사람당 10분에 10회, 하루 100회. 전체 합계 제한은 두지 않는다. */
+export const CLAUDE_LIMITS: ClaudeLimits = { user: { windowMs: 600_000, max: 10 }, userDailyMax: 100, dailyMax: null };
+/** 하루 횟수가 초기화되는 한국 시간(시). 모든 사용자가 같은 시각에 초기화된다. */
+export const LIMIT_DAY_RESET_HOUR_KST = 6;

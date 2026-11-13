@@ -1,42 +1,54 @@
-import { CLAUDE_LIMITS, type ClaudeLimits } from "@/lib/claude/constants";
+import { CLAUDE_LIMITS, LIMIT_DAY_RESET_HOUR_KST, type ClaudeLimits } from "@/lib/claude/constants";
 import { mongoCollection, withMongoTransaction } from "@/lib/mongo";
 import { nextRateState } from "@/lib/rateLimit";
 
 const DAY_MS = 86_400_000;
-const KST_OFFSET_MS = 9 * 3600_000;
+/** 한도 날짜는 한국 시간 LIMIT_DAY_RESET_HOUR_KST 시에 바뀐다. UTC 시각에 이만큼 더하면 한도 날짜의 자정이 UTC 자정에 온다. */
+const LIMIT_DAY_OFFSET_MS = (9 - LIMIT_DAY_RESET_HOUR_KST) * 3600_000;
 
-export function kstDayKey(nowMs: number): string {
-  const d = new Date(nowMs + KST_OFFSET_MS);
+/** 그 시각이 속한 한도 날짜(YYYYMMDD). 한국 시간 06:00 부터 다음 날 06:00 전까지가 하루다. */
+export function limitDayKey(nowMs: number): string {
+  const d = new Date(nowMs + LIMIT_DAY_OFFSET_MS);
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}${m}${day}`;
 }
 
-/** 하루 문서가 지워지는 시각: 그날 KST 끝 + 1일. */
-export function kstDayExpireAt(nowMs: number): Date {
-  const dayStart = Math.floor((nowMs + KST_OFFSET_MS) / DAY_MS) * DAY_MS - KST_OFFSET_MS;
+/** 하루 문서가 지워지는 시각: 그 한도 날짜가 끝나는 시각 + 1일. */
+export function limitDayExpireAt(nowMs: number): Date {
+  const dayStart = Math.floor((nowMs + LIMIT_DAY_OFFSET_MS) / DAY_MS) * DAY_MS - LIMIT_DAY_OFFSET_MS;
   return new Date(dayStart + 2 * DAY_MS);
 }
 
-/** MongoDB claudeLimits 문서. _id 는 user_{uid} 또는 day_{YYYYMMDD}. */
+/** 사람당 하루 사용량 문서 id. */
+export function userDayDocId(uid: string, nowMs: number): string {
+  return `userday_${uid}_${limitDayKey(nowMs)}`;
+}
+
+/** MongoDB claudeLimits 문서. _id 는 user_{uid}(시간 창), userday_{uid}_{YYYYMMDD}(사람당 하루), day_{YYYYMMDD}(전체 하루). */
 type LimitDoc = { _id: string; count: number; windowStart?: number; expireAt: Date };
 
-/** 켜진 제한만 검사하고 기록한다. 둘 다 꺼져 있으면 MongoDB 에 접근하지 않는다. 방·페르소나를 가리지 않고 센다. */
+/**
+ * 켜진 제한만 검사하고 기록한다. 모두 꺼져 있으면 MongoDB 에 접근하지 않는다. 방·페르소나를 가리지 않고 센다.
+ * 시간 창을 넘으면 "user", 사람당 하루나 전체 하루를 넘으면 "daily" 다. 막힌 호출은 어느 것도 세지 않는다.
+ */
 export async function consumeClaudeQuota(
   uid: string,
   nowMs: number,
   limits: ClaudeLimits = CLAUDE_LIMITS,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<"ok" | "user" | "daily"> {
-  const { user: userLimit, dailyMax } = limits;
-  if (!userLimit && dailyMax === null) return "ok";
+  const { user: userLimit, userDailyMax, dailyMax } = limits;
+  if (!userLimit && userDailyMax === null && dailyMax === null) return "ok";
   const col = await mongoCollection<LimitDoc>("claudeLimits", env);
   const userId = `user_${uid}`;
-  const dayId = `day_${kstDayKey(nowMs)}`;
+  const userDayId = userDayDocId(uid, nowMs);
+  const dayId = `day_${limitDayKey(nowMs)}`;
   return withMongoTransaction(async (session) => {
     /** 한 세션 안의 명령은 동시에 보내지 않고 차례로 보낸다. */
     const u = userLimit ? await col.findOne({ _id: userId }, { session }) : null;
+    const ud = userDailyMax !== null ? await col.findOne({ _id: userDayId }, { session }) : null;
     const d = dailyMax !== null ? await col.findOne({ _id: dayId }, { session }) : null;
     let userState: { count: number; windowStart: number } | null = null;
     if (userLimit) {
@@ -45,11 +57,12 @@ export async function consumeClaudeQuota(
       if (!next.allowed) return "user";
       userState = next.state;
     }
-    let dayCount = 0;
-    if (dailyMax !== null) {
-      dayCount = d?.count ?? 0;
-      if (dayCount >= dailyMax) return "daily";
-    }
+    const userDayCount = ud?.count ?? 0;
+    if (userDailyMax !== null && userDayCount >= userDailyMax) return "daily";
+    const dayCount = d?.count ?? 0;
+    if (dailyMax !== null && dayCount >= dailyMax) return "daily";
+
+    const dayExpireAt = limitDayExpireAt(nowMs);
     if (userLimit && userState) {
       await col.replaceOne(
         { _id: userId },
@@ -57,8 +70,11 @@ export async function consumeClaudeQuota(
         { upsert: true, session },
       );
     }
+    if (userDailyMax !== null) {
+      await col.replaceOne({ _id: userDayId }, { count: userDayCount + 1, expireAt: dayExpireAt }, { upsert: true, session });
+    }
     if (dailyMax !== null) {
-      await col.replaceOne({ _id: dayId }, { count: dayCount + 1, expireAt: kstDayExpireAt(nowMs) }, { upsert: true, session });
+      await col.replaceOne({ _id: dayId }, { count: dayCount + 1, expireAt: dayExpireAt }, { upsert: true, session });
     }
     return "ok";
   }, env);
