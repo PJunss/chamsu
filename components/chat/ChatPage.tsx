@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { LoginPrompt } from "@/components/auth/LoginPrompt";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 import { ChatRoomList } from "@/components/chat/ChatRoomList";
-import { useDisplayName } from "@/lib/userDoc";
+import { shownDisplayName } from "@/lib/displayName";
+import { ensureUserDoc, useDisplayName } from "@/lib/userDoc";
 
 /**
  * Chat 탭. personaId 가 null 이면 목록 화면, 있으면 그 캐릭터와의 대화 화면이다.
@@ -15,11 +17,20 @@ export function ChatPage({ personaId }: { personaId: string | null }) {
   const auth = useAuth();
   if (auth.status === "loading") return null;
   if (auth.status === "out") return <LoginPrompt title="Chat" />;
-  return <SignedInChat uid={auth.uid} personaId={personaId} />;
+  return <SignedInChat uid={auth.uid} googleName={auth.googleName} personaId={personaId} />;
 }
 
-function SignedInChat({ uid, personaId }: { uid: string; personaId: string | null }) {
-  const displayName = useDisplayName(uid);
+/** 유저 문서가 없으면 구글 표시 이름으로 대화를 열고 문서 만들기를 다시 시도한다. 문서가 생기면 그 이름으로 바뀐다. */
+function SignedInChat({ uid, googleName, personaId }: { uid: string; googleName: string | null; personaId: string | null }) {
+  const nameState = useDisplayName(uid);
+  const displayName = shownDisplayName(nameState, googleName);
+  const missing = nameState.status === "missing";
+  useEffect(() => {
+    if (!missing) return;
+    ensureUserDoc(uid, googleName).catch((e: unknown) =>
+      console.warn("user doc create failed", e instanceof Error ? e.name : "unknown"),
+    );
+  }, [missing, uid, googleName]);
   return (
     <div className="flex h-full">
       <aside className={`${personaId ? "hidden md:block" : "block"} w-full md:w-[300px] md:shrink-0 md:border-r md:border-zinc-200`}>

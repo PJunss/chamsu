@@ -5,7 +5,10 @@ import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { getClientAuth } from "@/lib/firebaseClient";
 import { ensureUserDoc } from "@/lib/userDoc";
 
-export type AuthState = { status: "loading" } | { status: "out" } | { status: "in"; uid: string; email: string | null };
+export type AuthState =
+  | { status: "loading" }
+  | { status: "out" }
+  | { status: "in"; uid: string; email: string | null; googleName: string | null };
 
 const errCode = (e: unknown) => (e instanceof Error ? e.name : "unknown");
 
@@ -23,7 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setState({ status: "out" });
         return;
       }
-      setState({ status: "in", uid: user.uid, email: user.email });
+      setState({ status: "in", uid: user.uid, email: user.email, googleName: user.displayName });
       ensureUserDoc(user.uid, user.displayName).catch((e: unknown) => console.warn("user doc create failed", errCode(e)));
     });
   }, []);

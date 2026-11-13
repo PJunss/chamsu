@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { LoginPrompt } from "@/components/auth/LoginPrompt";
-import { DISPLAY_NAME_MAX } from "@/lib/displayName";
+import { DISPLAY_NAME_MAX, shownDisplayName } from "@/lib/displayName";
 import { logout } from "@/lib/firebaseClient";
 import { saveDisplayName, useDisplayName } from "@/lib/userDoc";
 
@@ -12,21 +12,24 @@ export function SettingsView() {
   const auth = useAuth();
   if (auth.status === "loading") return null;
   if (auth.status === "out") return <LoginPrompt title="설정" />;
-  return <SignedInSettings uid={auth.uid} email={auth.email} />;
+  return <SignedInSettings uid={auth.uid} email={auth.email} googleName={auth.googleName} />;
 }
 
 const errName = (e: unknown) => (e instanceof Error ? e.name : "unknown");
 
-function SignedInSettings({ uid, email }: { uid: string; email: string | null }) {
-  const saved = useDisplayName(uid);
+function SignedInSettings({ uid, email, googleName }: { uid: string; email: string | null; googleName: string | null }) {
+  const nameState = useDisplayName(uid);
+  const loading = nameState.status === "loading";
+  /** 유저 문서가 없으면 구글 표시 이름을 보이고, 저장을 누르면 그 이름으로 문서를 만든다. */
+  const shown = shownDisplayName(nameState, googleName);
   /** 입력 중인 이름. null 이면 저장된 이름을 그대로 보인다. */
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<"saved" | "failed" | null>(null);
-  const name = draft ?? saved ?? "";
+  const name = draft ?? shown ?? "";
 
   async function save() {
-    if (busy || !name.trim()) return;
+    if (busy || loading || !name.trim()) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -52,7 +55,7 @@ function SignedInSettings({ uid, email }: { uid: string; email: string | null })
             aria-hidden
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-bold text-zinc-900"
           >
-            {[...(saved ?? "")][0] ?? ""}
+            {[...(shown ?? "")][0] ?? ""}
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm text-zinc-900">{email ?? ""}</p>
@@ -85,12 +88,13 @@ function SignedInSettings({ uid, email }: { uid: string; email: string | null })
               if (e.key === "Enter") save();
             }}
             maxLength={DISPLAY_NAME_MAX}
-            className="h-11 min-w-0 flex-1 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500"
+            disabled={loading}
+            className="h-11 min-w-0 flex-1 rounded-md border border-zinc-300 px-3 text-sm outline-none focus:border-zinc-500 disabled:bg-zinc-100"
           />
           <button
             type="button"
             onClick={save}
-            disabled={busy || !name.trim() || name === saved}
+            disabled={busy || loading || !name.trim() || (nameState.status === "ready" && name === nameState.name)}
             className="h-11 rounded-md bg-zinc-800 px-4 text-sm font-bold text-white disabled:opacity-40"
           >
             저장
