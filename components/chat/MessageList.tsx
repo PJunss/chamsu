@@ -5,7 +5,6 @@ import type { ChatMessage } from "@/components/chat/useMessages";
 import { isNearBottom } from "@/lib/scroll";
 import { BotAvatar } from "@/components/chat/BotAvatar";
 import { findPersonaByUid, type PersonaInfo } from "@/lib/claude/personas/info";
-import type { RoomItem } from "@/lib/claude/roomList";
 import { shownAffinity } from "@/lib/claude/affinity";
 
 export type ChatViewProps = {
@@ -19,19 +18,15 @@ export type ChatViewProps = {
   typing: PersonaInfo[];
   /** 지금 방에서 내 호감도, 페르소나 id → 화면 점수. 문서가 없는 페르소나는 빠져 있다. 아직 모르면(로딩·오류) null */
   affinity: Record<string, number> | null;
-  /** 1:1 방이면 그 방 페르소나의 화면 호감도. 단체방이거나 아직 모르면 null */
+  /** 그 방 페르소나의 화면 호감도. 아직 모르면 null */
   titleAffinity: number | null;
   /** 호출에 실패한 페르소나 닉네임. 없으면 null */
   claudeFailed: string | null;
-  rooms: RoomItem[];
   roomId: string;
+  /** 방 페르소나의 닉네임과 아바타 */
   roomTitle: string;
-  isGroup: boolean;
+  avatar: string;
   placeholder?: string;
-  selectRoom: (roomId: string) => void;
-  /** 모바일에서 방 목록 화면을 보이는지 */
-  showList: boolean;
-  backToList: () => void;
 };
 
 /** 호감도 표시 `♥ {점수}`. */
