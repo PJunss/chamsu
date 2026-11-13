@@ -95,6 +95,30 @@ test("닉네임이 들어간 질문은 러너를 부르지 않고 거절 문구�
   });
 });
 
+test("nicknames 를 주지 않으면 대화 기록의 사용자 이름이 들어간 질문을 막는다", async () => {
+  const withBot = [
+    { id: "a", uid: "u1", nickname: " 철수 ", text: "안녕" },
+    { id: "b", uid: persona.info.uid, nickname: persona.info.nickname, text: "흐흥" },
+    ...history,
+  ];
+  const { create, calls } = fakeCreate(toolUse("tu1", "철수 생일?"), text("모르느니라."));
+  const askHelper = vi.fn();
+  await answer({ room, persona, history: withBot, memories: [] }, { create, askHelper, env: runner });
+  expect(askHelper).not.toHaveBeenCalled();
+  expect(calls[1].messages.at(-1)).toEqual({
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: "tu1", content: "(친구 이름이 들어간 질문은 보낼 수 없다)" }],
+  });
+});
+
+test("nicknames 를 주지 않아도 대화 기록에 없는 이름과 봇 이름은 막지 않는다", async () => {
+  const withBot = [{ id: "b", uid: persona.info.uid, nickname: persona.info.nickname, text: "흐흥" }, ...history];
+  const { create } = fakeCreate(toolUse("tu1", `영희와 ${persona.info.nickname} 생일?`), text("모르느니라."));
+  const askHelper = vi.fn(async () => "3월");
+  await answer({ room, persona, history: withBot, memories: [] }, { create, askHelper, env: runner });
+  expect(askHelper).toHaveBeenCalledWith(`영희와 ${persona.info.nickname} 생일?`, expect.objectContaining({ env: runner }));
+});
+
 test("도우미가 실패하면 실패 문구를 넣고 계속 답한다", async () => {
   const { create, calls } = fakeCreate(toolUse("tu1", "환율?"), text("모르느니라."));
   const askHelper = vi.fn(async () => null);
