@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useIsAdmin } from "@/components/admin/useIsAdmin";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { LoginPrompt } from "@/components/auth/LoginPrompt";
 import { DISPLAY_NAME_MAX, shownDisplayName } from "@/lib/displayName";
@@ -27,6 +29,7 @@ function SignedInSettings({ uid, email, googleName }: { uid: string; email: stri
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<"saved" | "failed" | null>(null);
   const name = draft ?? shown ?? "";
+  const isAdmin = useIsAdmin();
 
   async function save() {
     if (busy || loading || !name.trim()) return;
@@ -69,6 +72,11 @@ function SignedInSettings({ uid, email, googleName }: { uid: string; email: stri
             로그아웃
           </button>
         </div>
+        {isAdmin === true && (
+          <Link href="/admin" className="mt-4 inline-block text-sm text-zinc-700 underline underline-offset-4 hover:text-zinc-900">
+            관리자 화면
+          </Link>
+        )}
       </section>
 
       <section className="mt-7">
