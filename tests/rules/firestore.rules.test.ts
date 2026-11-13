@@ -176,6 +176,78 @@ describe("users", () => {
   });
 });
 
+describe("users/{uid}/events", () => {
+  const MINE = "users/alice/events";
+  const START = Timestamp.fromMillis(Date.UTC(2026, 10, 19, 12));
+  const myEvent = (over: Record<string, unknown> = {}) => ({
+    title: "스크림",
+    startAt: START,
+    endAt: null,
+    allDay: false,
+    remindMinutes: null,
+    remindAt: null,
+    notifiedAt: null,
+    via: "app",
+    ...over,
+  });
+  const seedMine = (uid = "alice") => seed(`users/${uid}/events/e1`, myEvent());
+
+  test("본인은 만들고 읽고 고치고 지운다", async () => {
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent()));
+    await assertSucceeds(
+      setDoc(
+        doc(user(), `${MINE}/e1`),
+        myEvent({ endAt: Timestamp.fromMillis(START.toMillis() + 3_600_000), remindMinutes: 30, remindAt: Timestamp.fromMillis(START.toMillis() - 1_800_000) }),
+      ),
+    );
+    await assertSucceeds(getDocs(collection(user(), MINE)));
+    await assertSucceeds(getDoc(doc(user(), `${MINE}/e1`)));
+    await assertSucceeds(updateDoc(doc(user(), `${MINE}/e1`), { title: "연습" }));
+    await assertSucceeds(deleteDoc(doc(user(), `${MINE}/e1`)));
+  });
+  test("남은 읽지도 쓰지도 못한다", async () => {
+    await seedMine();
+    await assertFails(getDoc(doc(user("bob"), `${MINE}/e1`)));
+    await assertFails(getDocs(collection(user("bob"), MINE)));
+    await assertFails(addDoc(collection(user("bob"), MINE), myEvent()));
+    await assertFails(updateDoc(doc(user("bob"), `${MINE}/e1`), { title: "연습" }));
+    await assertFails(deleteDoc(doc(user("bob"), `${MINE}/e1`)));
+  });
+  test("비로그인은 읽지도 쓰지도 못한다", async () => {
+    await seedMine();
+    await assertFails(getDocs(collection(anon(), MINE)));
+    await assertFails(addDoc(collection(anon(), MINE), myEvent()));
+    await assertFails(deleteDoc(doc(anon(), `${MINE}/e1`)));
+  });
+  test("제목은 1~60자", async () => {
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ title: "가".repeat(60) })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ title: "가".repeat(61) })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ title: "" })));
+  });
+  test("endAt 이 startAt 보다 뒤가 아니면 거부", async () => {
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ endAt: Timestamp.fromMillis(START.toMillis() - 1) })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ endAt: START })));
+  });
+  test("remindMinutes 는 10·30·60 만, 값이 있으면 remindAt 도 있어야 한다", async () => {
+    const at = Timestamp.fromMillis(START.toMillis() - 900_000);
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 15, remindAt: at })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 30, remindAt: null })));
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ remindMinutes: null, remindAt: at })));
+    await assertSucceeds(addDoc(collection(user(), MINE), myEvent({ remindMinutes: 10, remindAt: at })));
+  });
+  test("notifiedAt 에 값을 넣으면 거부", async () => {
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ notifiedAt: Timestamp.now() })));
+    await seedMine();
+    await assertFails(updateDoc(doc(user(), `${MINE}/e1`), { notifiedAt: Timestamp.now() }));
+  });
+  test("via 는 app 만", async () =>
+    assertFails(addDoc(collection(user(), MINE), myEvent({ via: "bot" }))));
+  test("모르는 필드, 빠진 필드는 거부", async () => {
+    await assertFails(addDoc(collection(user(), MINE), myEvent({ kind: "patch" })));
+    await assertFails(addDoc(collection(user(), MINE), { title: "스크림", startAt: START, allDay: false, via: "app" }));
+  });
+});
+
 describe("events", () => {
   beforeEach(async () => {
     await seed("events/e1", { title: "패치", kind: "patch", startAt: Timestamp.now() });

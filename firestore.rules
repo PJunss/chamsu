@@ -36,6 +36,25 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt;
     }
 
+    // 내 일정: 본인만 읽고 쓴다. remindAt 은 startAt − remindMinutes 이고, notifiedAt 은 서버만 채운다
+    match /users/{uid}/events/{id} {
+      function validMyEvent() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['title', 'startAt', 'endAt', 'allDay', 'remindMinutes', 'remindAt', 'notifiedAt', 'via'])
+          && d.keys().hasAll(['title', 'startAt', 'endAt', 'allDay', 'remindMinutes', 'remindAt', 'notifiedAt', 'via'])
+          && d.title is string && d.title.size() >= 1 && d.title.size() <= 60
+          && d.startAt is timestamp
+          && (d.endAt == null || (d.endAt is timestamp && d.endAt > d.startAt))
+          && d.allDay is bool
+          && (d.remindMinutes == null || d.remindMinutes in [10, 30, 60])
+          && (d.remindMinutes == null ? d.remindAt == null : d.remindAt is timestamp)
+          && d.notifiedAt == null
+          && d.via == 'app';
+      }
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && validMyEvent();
+    }
+
     // 방 문서는 clearedAt(/clear 한 시각)만 담는다. 주인만 읽고 쓰기는 서버만 한다
     match /rooms/{roomId} {
       allow read: if isRoomOwner(roomId);
