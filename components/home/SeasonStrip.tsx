@@ -1,6 +1,7 @@
 "use client";
 
 import { SeasonBanner } from "@/components/calendar/SeasonBanner";
+import { seasonColorOf } from "@/components/calendar/seasonColors";
 import { useRecentOfficial } from "@/components/calendar/useEvents";
 import { useNow } from "@/components/calendar/useNow";
 import { currentAndNextSeason, seasonBannerText } from "@/lib/calendar/season";
@@ -15,10 +16,11 @@ export function SeasonStrip() {
   if (!now) return null;
   const { current, next } = currentAndNextSeason(events, now);
   const text = seasonBannerText(current, next, now);
-  if (!text) return null;
+  const shown = current ?? next;
+  if (!text || !shown) return null;
   return (
     <section aria-label="시즌" className="px-4 md:px-0">
-      <SeasonBanner text={text} href="/calendar" />
+      <SeasonBanner text={text} color={seasonColorOf(shown)} href="/calendar" />
     </section>
   );
 }

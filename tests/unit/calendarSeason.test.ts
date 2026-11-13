@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { CalendarEvent } from "@/lib/calendar/events";
 import { kstDate } from "@/lib/calendar/kst";
-import { currentAndNextSeason, seasonBannerText, seasonMarkersOnDay, seasonProgress } from "@/lib/calendar/season";
+import { SEASON_COLORS } from "@/components/calendar/seasonColors";
+import {
+  SEASON_COLOR_COUNT, currentAndNextSeason, seasonBannerText, seasonColorIndex, seasonMarkersOnDay, seasonOnDay, seasonProgress,
+} from "@/lib/calendar/season";
 
 const ev = (over: Partial<CalendarEvent>): CalendarEvent => ({
   id: "e", title: "t", kind: "season", mine: false, startAt: kstDate(2026, 11, 19, 12), endAt: null, allDay: false,
@@ -101,5 +104,67 @@ describe("seasonBannerText", () => {
   });
   test("둘 다 없으면 null", () => {
     expect(seasonBannerText(null, null, kstDate(2026, 11, 13))).toBeNull();
+  });
+});
+
+describe("seasonColorIndex", () => {
+  test("id 가 season-{숫자} 면 숫자를 4로 나눈 나머지", () => {
+    expect(SEASON_COLOR_COUNT).toBe(4);
+    expect(seasonColorIndex({ id: "season-42" })).toBe(2);
+    expect(seasonColorIndex({ id: "season-43" })).toBe(3);
+    expect(seasonColorIndex({ id: "season-44" })).toBe(0);
+  });
+  test("이웃한 두 시즌은 색이 다르다", () => {
+    for (let n = 1; n < 60; n++) {
+      expect(seasonColorIndex({ id: `season-${n}` })).not.toBe(seasonColorIndex({ id: `season-${n + 1}` }));
+    }
+  });
+  test("season- 꼴이 아닌 id 도 0~3 을 주고 같은 id 는 늘 같은 값이다", () => {
+    for (const id of ["auto1", "aB3xYz09", "season-", "season-4x", "시즌", ""]) {
+      const i = seasonColorIndex({ id });
+      expect([0, 1, 2, 3]).toContain(i);
+      expect(seasonColorIndex({ id })).toBe(i);
+    }
+    expect(seasonColorIndex({ id: "ab" })).toBe((97 + 98) % 4);
+  });
+  test("색 묶음은 색 번호 수만큼 있고 묶음마다 클래스가 채워져 있다", () => {
+    expect(SEASON_COLORS).toHaveLength(SEASON_COLOR_COUNT);
+    for (const c of SEASON_COLORS) {
+      expect(c.soft).toMatch(/^bg-[a-z]+-100$/);
+      expect(c.text).toMatch(/^text-[a-z]+-800$/);
+      expect(c.solid).toMatch(/^bg-[a-z]+-600$/);
+      expect(c.ring).toMatch(/^ring-[a-z]+-600$/);
+    }
+    expect(new Set(SEASON_COLORS.map((c) => c.soft)).size).toBe(SEASON_COLOR_COUNT);
+  });
+});
+
+describe("seasonOnDay", () => {
+  const pre42 = ev({ id: "season-42", startAt: kstDate(2026, 11, 12, 12), endAt: kstDate(2026, 11, 19, 12) });
+  const reg43 = ev({ id: "season-43", startAt: kstDate(2026, 11, 19, 12), endAt: kstDate(2027, 2, 18, 9) });
+  const seasons = [reg43, patch, pre42];
+  const on = (events: CalendarEvent[], year: number, month: number, day: number) => seasonOnDay(events, { year, month, day })?.id ?? null;
+
+  test("시즌 기간 밖의 날은 null", () => {
+    expect(on(seasons, 2026, 11, 11)).toBeNull();
+    expect(on(seasons, 2027, 2, 19)).toBeNull();
+  });
+  test("시작하는 날부터 끝나는 날까지 그 시즌", () => {
+    expect(on(seasons, 2026, 11, 12)).toBe("season-42");
+    expect(on(seasons, 2026, 11, 18)).toBe("season-42");
+    expect(on(seasons, 2026, 12, 25)).toBe("season-43");
+    expect(on(seasons, 2027, 2, 18)).toBe("season-43");
+  });
+  test("두 시즌이 걸치는 날은 더 늦게 시작한 시즌", () => {
+    expect(on(seasons, 2026, 11, 19)).toBe("season-43");
+    expect(on([pre42, reg43], 2026, 11, 19)).toBe("season-43");
+  });
+  test("끝이 자정 정각이면 그 전날까지", () => {
+    const midnight = [ev({ id: "season-43", startAt: kstDate(2026, 11, 19, 12), endAt: kstDate(2027, 2, 18) })];
+    expect(on(midnight, 2027, 2, 18)).toBeNull();
+    expect(on(midnight, 2027, 2, 17)).toBe("season-43");
+  });
+  test("시즌이 아닌 일정은 무시한다", () => {
+    expect(on([patch], 2026, 11, 15)).toBeNull();
   });
 });

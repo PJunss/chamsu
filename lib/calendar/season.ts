@@ -1,4 +1,4 @@
-import { ddayText, type CalendarEvent } from "@/lib/calendar/events";
+import { ddayText, eventsOnDay, type CalendarEvent } from "@/lib/calendar/events";
 import { kstDate, kstDayNumber, kstParts, type Ymd } from "@/lib/calendar/kst";
 
 /**
@@ -78,4 +78,31 @@ export function seasonBannerText(
     return { title: `${next.title} 시작 예정`, detail: joined(shortDate(next.startAt, now), daysUntil(next.startAt, now)), progress: null };
   }
   return null;
+}
+
+/** 시즌에 주는 색의 가짓수. */
+export const SEASON_COLOR_COUNT = 4;
+
+/**
+ * 시즌 일정의 색 번호 0~3. id 가 season-{숫자} 면 숫자 % 4, 아니면 id 글자 코드 합 % 4.
+ * 번호가 이어지는 시즌(프리시즌과 그 정규 시즌)은 서로 다른 색이 된다.
+ */
+export function seasonColorIndex(e: Pick<CalendarEvent, "id">): number {
+  const m = /^season-(\d+)$/.exec(e.id);
+  if (m) return Number(BigInt(m[1]) % BigInt(SEASON_COLOR_COUNT));
+  let sum = 0;
+  for (let i = 0; i < e.id.length; i++) sum += e.id.charCodeAt(i);
+  return sum % SEASON_COLOR_COUNT;
+}
+
+/**
+ * 그 날짜(KST)에 걸치는 시즌 중 가장 늦게 시작한 것. 없으면 null. kind 가 season 인 것만 본다.
+ * 걸치는 판정은 eventsOnDay 와 같다(끝이 자정 정각이면 그 전날까지).
+ */
+export function seasonOnDay(events: readonly CalendarEvent[], ymd: Ymd): CalendarEvent | null {
+  const onDay = eventsOnDay(
+    events.filter((e) => e.kind === "season"),
+    ymd,
+  );
+  return onDay[onDay.length - 1] ?? null;
 }

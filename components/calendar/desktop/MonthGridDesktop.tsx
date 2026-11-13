@@ -1,9 +1,10 @@
-import { MAX_BAR_LANES, WEEKDAY_LABELS, sameDay, type MonthGridProps } from "@/components/calendar/mobile/MonthGridMobile";
+import { MAX_BAR_LANES, WEEKDAY_LABELS, dayNumberClass, sameDay, type MonthGridProps } from "@/components/calendar/mobile/MonthGridMobile";
 import { FlagIcon } from "@/components/calendar/SeasonBanner";
+import { seasonColorOf } from "@/components/calendar/seasonColors";
 import { singleDayEvents, weekBars } from "@/lib/calendar/bars";
 import { GROUP_COLOR, eventsOnDay, groupOf } from "@/lib/calendar/events";
 import { monthGrid } from "@/lib/calendar/kst";
-import { seasonMarkersOnDay } from "@/lib/calendar/season";
+import { seasonMarkersOnDay, seasonOnDay } from "@/lib/calendar/season";
 
 const MAX_LABELS = 3;
 /** 막대 한 줄이 차지하는 높이(px): 막대 20 + 간격 2. */
@@ -16,7 +17,8 @@ const MORE_ROW_PX = 18;
 /**
  * 데스크톱 월 보기. 칸마다 날짜 숫자를 보이고, 그 아래에 여러 날 일정을 칸을 가로지르는 막대(옅은 묶음 색 바탕에 제목, 최대 2줄)로,
  * 그 아래에 하루짜리 일정을 이름표(최대 3개, 넘치면 "+n")로 보인다. 막대가 2줄을 넘으면 그 주 첫 칸에 "+n" 을 보인다.
- * 시즌 일정은 막대나 이름표 대신, 시작하는 날에 깃발과 "{제목} 시작", 끝나는 날에 "{제목} 종료" 를 시즌 색 글자로 보인다.
+ * 시즌 일정은 막대나 이름표 대신, 시작하는 날에 깃발과 "{제목} 시작", 끝나는 날에 "{제목} 종료" 를 그 시즌 색 글자로 보이고,
+ * 시즌 기간의 날짜 숫자를 그 시즌 색으로 칠한다.
  * 막대·이름표·시즌 표식을 누르면 onOpenEvent, "+n" 을 누르면 onOpenDay, 칸의 빈 곳을 누르면 그 날짜로 onPickDay 를 부른다.
  */
 export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpenDay, onOpenEvent }: MonthGridProps) {
@@ -43,6 +45,7 @@ export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpen
               const dayEvents = inMonth ? eventsOnDay(singles, ymd) : [];
               const more = dayEvents.length - MAX_LABELS;
               const marks = inMonth ? seasonMarkersOnDay(events, ymd) : [];
+              const season = inMonth ? seasonOnDay(events, ymd) : null;
               return (
                 <div key={ymd.day} className={`relative min-w-0 p-1.5 ${i > 0 ? "border-l border-zinc-200" : ""}`}>
                   <button
@@ -53,15 +56,12 @@ export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpen
                   />
                   <span
                     aria-current={isToday ? "date" : undefined}
-                    className={`pointer-events-none relative flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                      isToday
-                        ? "bg-zinc-900 font-bold text-white"
-                        : !inMonth
-                          ? "text-zinc-300"
-                          : i === 0
-                            ? "text-rose-600"
-                            : "text-zinc-900"
-                    }`}
+                    className={`pointer-events-none relative flex h-6 w-6 items-center justify-center rounded-full text-xs ${dayNumberClass({
+                      isToday,
+                      inMonth,
+                      sunday: i === 0,
+                      season: season ? seasonColorOf(season) : null,
+                    })}`}
                   >
                     {ymd.day}
                   </span>
@@ -71,7 +71,7 @@ export function MonthGridDesktop({ year, month, today, events, onPickDay, onOpen
                         <button
                           type="button"
                           onClick={() => onOpenEvent(m.event)}
-                          className={`pointer-events-auto flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] font-bold hover:bg-indigo-50 ${GROUP_COLOR.season.text}`}
+                          className={`pointer-events-auto flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] font-bold hover:bg-zinc-100 ${seasonColorOf(m.event).text}`}
                         >
                           {m.type === "start" && <FlagIcon size={10} />}
                           <span className="truncate">

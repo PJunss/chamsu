@@ -8,6 +8,7 @@ import { FilterChips } from "@/components/calendar/FilterChips";
 import { MonthHeader } from "@/components/calendar/MonthHeader";
 import { MyEventForm } from "@/components/calendar/MyEventForm";
 import { SeasonBanner } from "@/components/calendar/SeasonBanner";
+import { seasonColorOf } from "@/components/calendar/seasonColors";
 import { UpcomingList } from "@/components/calendar/UpcomingList";
 import { MonthGridDesktop } from "@/components/calendar/desktop/MonthGridDesktop";
 import { MonthGridMobile } from "@/components/calendar/mobile/MonthGridMobile";
@@ -90,7 +91,7 @@ function CalendarView({ now }: { now: Date }) {
         </div>
         {season && (
           <div className="mt-3">
-            <SeasonBanner text={season.text} onOpen={() => setDetail(season.target)} />
+            <SeasonBanner text={season.text} color={seasonColorOf(season.target)} onOpen={() => setDetail(season.target)} />
           </div>
         )}
         <div className="mt-4 md:hidden">
